@@ -46,9 +46,19 @@ desarrollar como tal.
 
 ## Estado
 
-Pre-M0. Todavía no hay nada implementado. La arquitectura documentada aquí es un plan, y
-las cifras de [Inferencia](architecture/inference.md) son estimaciones que
-[M0](roadmap.md#m0-benchmark) existe para reemplazar por mediciones.
+La fontanería está construida y probada; las mediciones no están tomadas.
+
+El protocolo, el núcleo, el cliente de captura, la consola, ambos backends reales y el
+arnés de benchmark existen y funcionan. Lo que no existe todavía es una sola medición del
+hardware objetivo: cada cifra de rendimiento de estas páginas sigue siendo una estimación
+derivada de especificaciones publicadas, etiquetada como tal, y
+[M0](roadmap.md#m0-benchmark) existe para reemplazarlas.
+
+Dos cosas están explícitamente sin probar, no simplemente sin terminar.
+`capture/backends/pipewire.py` nunca se ha ejecutado, porque la máquina donde se desarrolló
+no tiene dispositivos de audio: eso es [M3](roadmap.md#m3-cliente-linux). Y no se ha
+ejecutado ningún modelo en el Mac mini, que es de lo que dependen todas las puertas de la
+hoja de ruta.
 
 ## Licencia
 

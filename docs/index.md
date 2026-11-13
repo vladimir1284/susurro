@@ -39,9 +39,18 @@ screen share. It is not an anti-detection feature, and it will not be developed 
 
 ## Status
 
-Pre-M0. Nothing is implemented yet. The architecture documented here is a plan, and the
-numbers in [Inference](architecture/inference.md) are estimates that
-[M0](roadmap.md#m0-benchmark) exists to replace with measurements.
+The plumbing is built and tested; the measurements are not taken.
+
+The protocol, the core server, the capture client, the console, both real backends and the
+benchmark harness all exist and run. What does not exist yet is a single measurement from
+the target hardware: every performance number on these pages is still an estimate derived
+from published specifications, labelled as one, and [M0](roadmap.md#m0-benchmark) exists
+to replace them.
+
+Two things are explicitly unproven rather than merely unfinished. `capture/backends/pipewire.py`
+has never been executed, because the machine this was developed on has no audio devices —
+that is [M3](roadmap.md#m3-linux-client). And no model has been run on the Mac mini, which
+is everything the roadmap's gates depend on.
 
 ## License
 

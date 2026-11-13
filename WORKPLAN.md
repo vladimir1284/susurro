@@ -81,7 +81,7 @@ LinkedIn draft if there is a lesson worth writing down.
       workflow for `pytest`, with the Playwright browser cached, matching the strictness
       of the docs workflow.
 
-- [ ] **WP8 — Repository front door**
+- [x] **WP8 — Repository front door**
       `README.md` still says "nothing is implemented", which stopped being true four
       commits ago. Update it, and add a `CONTRIBUTING.md` that says what a useful first
       contribution is — a benchmark result from hardware that is not the reference Mac
@@ -248,3 +248,16 @@ machine with audio devices.
   what `close()` is for. `E501` is ignored on purpose — the comments in this project
   explain why decisions were made, and a hard wrap that splits a sentence badly is worse
   than a long line.
+- `2026-11-13` — WP8 done. README rewritten: a status table naming what is built and what
+  is not, the fake backends shown as the way to run it without models, and
+  `capture/backends/pipewire.py` listed as **written, never executed** where a reader will
+  see it rather than only in its own docstring. The documentation links now point at the
+  files in `docs/`, not at the Cloudflare site, which has still never deployed — handing a
+  reader a dead URL is worse than handing them a path. `CONTRIBUTING.md` added: the first
+  thing it asks for is a benchmark result from hardware that is not the reference Mac mini,
+  including runs that fail a gate, since a failure elsewhere is the result.
+  `docs/index.md` and its Spanish twin had the same rot and said "nothing is implemented
+  yet"; both now distinguish *unfinished* from *unproven*. New `tests/test_repo_docs.py`
+  guards all of it: relative links resolve, no link points at the undeployed site, the
+  README does not claim nothing is built, and it still names the unrun backend. The README
+  was stale for four commits and nobody noticed, because nobody reads their own README.

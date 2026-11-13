@@ -3,7 +3,9 @@
 **A local-first, real-time copilot for meetings and interviews.** Speech recognition and
 language model inference run on hardware you own. Audio never leaves your network.
 
-📖 **[Documentation](https://susurro-docs.workers.dev/)** · [Español](https://susurro-docs.workers.dev/es/)
+[![tests](https://github.com/vladimir1284/susurro/actions/workflows/tests.yml/badge.svg)](https://github.com/vladimir1284/susurro/actions/workflows/tests.yml)
+
+📖 Documentation: [`docs/`](docs/) — English and Spanish, built with mkdocs-material.
 
 ---
 
@@ -22,37 +24,63 @@ conversation that should not sit in a third party's logs.
 
 ```
 capture client  ──Opus/WS──▶  core  ──JSON/WS──▶  console
-(mic + loopback)              (VAD, STT, LLM)     (phone / 2nd screen)
+(mic + loopback)              (STT, hints)        (phone / 2nd screen)
  Linux or macOS               Mac mini M4 16 GB    any browser
 ```
 
-Three key decisions, explained in the docs:
+Three decisions, each explained in the docs:
 
-- **[Two audio lanes, never mixed](https://susurro-docs.workers.dev/architecture/audio/)** —
-  microphone and system loopback stay separate, which makes speaker attribution exact and
-  free, with no diarization model.
-- **[Prompt cache as a requirement](https://susurro-docs.workers.dev/architecture/inference/)** —
-  the static context is prefilled once per session so each hint only pays for the new
-  transcript lines.
-- **[Speculative generation](https://susurro-docs.workers.dev/architecture/inference/)** —
-  hints start generating when the other party stops talking, not when you press a key.
+- **[Two audio lanes, never mixed](docs/architecture/audio.md)** — microphone and system
+  loopback stay separate, which makes speaker attribution exact and free, with no
+  diarization model, and supplies the end-of-turn signal for speculative hints.
+- **[Prompt cache as a requirement](docs/architecture/inference.md)** — the static context
+  is prefilled once per session, so each hint only pays for the new transcript lines. The
+  prompt is append-only, which is why only finalized transcript text ever reaches the
+  model.
+- **[Measure before you build](docs/roadmap.md)** — every performance number in the docs is
+  currently an estimate, labelled as one, and the first milestone exists to replace them.
+
+## Status
+
+The plumbing is built and tested. The measurements are not taken.
+
+| Piece | State |
+|---|---|
+| Wire protocol | Done — `core/protocol.py` |
+| Core server, session state, profiles | Done — `core/server.py`, `core/session/` |
+| Capture client, Opus, WAV replay | Done — `capture/` |
+| PipeWire capture | **Written, never executed.** No audio devices on the development machine. |
+| Console | Done — `console/`, driven by browser tests |
+| Speech backend (faster-whisper) | Done — `core/stt/whisper.py` |
+| Hint backend (any OpenAI-compatible server) | Done — `core/llm/openai_compat.py` |
+| M0 benchmark harness | Done — `bench/` |
+| **M0 measurements** | **Not taken.** Needs the Mac mini. |
+
+Everything can run without models: the core ships fake speech and hint backends, and the
+capture client can replay a WAV instead of opening a device. That is how the console, the
+protocol and the client were developed on a machine that cannot host a model at all.
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e ".[core,dev]"
+.venv/bin/python -m core.main --profiles tests/fixtures/profiles
+```
+
+For the real thing, see [`docs/development/setup.md`](docs/development/setup.md).
 
 ## Scope
 
 Susurro is a copilot, not a cheating tool. It will not implement proctoring evasion,
 screen-share hiding, or any other anti-detection feature. The console runs on a second
-device because hints should not be in your screen share — that is a design consequence,
-not a stealth feature.
+device because hints should not be in your screen share — a design consequence, not a
+stealth feature.
 
-## Status
+## Contributing
 
-**Pre-M0.** Nothing is implemented. The architecture is documented, the plan is public,
-and the first milestone is a benchmark whose job is to replace the current estimates with
-measurements. See the [roadmap](https://susurro-docs.workers.dev/roadmap/).
-
-The most useful early contribution is a benchmark result from hardware other than the
-reference Mac mini.
+The most useful contribution right now is a benchmark result from hardware that is not the
+reference Mac mini. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[AGPL-3.0](LICENSE).
+[AGPL-3.0](LICENSE). The hosted equivalent of this tool is sold as a subscription; the
+license is meant to keep any derivative offered as a service open as well.
