@@ -43,32 +43,51 @@ so the core can order and align lanes without trusting arrival time. See
 
 ## Voice activity detection
 
-!!! warning "Partly built"
-    What exists today is the recognizer's own VAD filter, which is enough for segment
-    boundaries. The separate per-lane detector described below does not exist yet, and
-    neither does the end-of-turn event that depends on it. That is
-    [M4](../roadmap.md#m4-speculative-hint).
+[Silero VAD](https://github.com/snakers4/silero-vad) runs per lane on the core, in
+`core/vad.py`, ahead of the recognizer. It runs on the core rather than in the capture
+client for the same reason everything else does: the client stays trivial to port, and a
+2 MB detector costs nothing next to the models already resident.
 
-Segment boundaries are handled today by faster-whisper's built-in VAD filter, inside
-`core/stt/whisper.py`. It decides which parts of a window are speech, and a window that
-has gone quiet for long enough closes the utterance. A ceiling on window length closes it
-regardless, so a speaker who never pauses still produces finals.
+It produces two things:
 
-That covers the recognizer's needs and not the second requirement. Speculative hints need
-to know that **the other party stopped talking**, as an event, promptly — not as a side
-effect of a transcription pass that runs once a second. For that, a dedicated detector
-such as [Silero VAD](https://github.com/snakers4/silero-vad) has to run per lane on the
-core, ahead of the recognizer.
+1. **Segment boundaries**, so a transcription pass is given speech rather than silence.
+2. **End-of-turn events on the `far` lane**, which start a hint before anyone asks for
+   one.
 
-It belongs on the core rather than in the capture client for the same reason everything
-else does: the client stays trivial to port, and the VAD model costs almost nothing next
-to the models already resident.
+The second is why this is a separate component rather than something left to the
+recognizer. faster-whisper has its own VAD filter and it answers the first question well
+enough, but only as a side effect of a transcription pass that runs about once a second.
+A speculative hint that waits for that has already spent most of its latency budget.
 
-When it exists, it will produce two things:
+### Hysteresis in both directions
 
-1. **Segment boundaries** for the recognizer, taking over from the recognizer's internal
-   filter.
-2. **End-of-turn events** on the `far` lane, which drive speculative hint generation.
+A raw per-window probability is not usable as an event. Both edges are smoothed, for
+different reasons:
+
+| Edge | Default | Why |
+|---|---|---|
+| Opening an utterance | 2 windows (~64 ms) | A door closing is not speech. |
+| Closing one | 16 windows (~512 ms) | The pauses inside a sentence are longer than people expect. |
+
+The closing number is the one that matters. Set it too low and end-of-turn fires during a
+breath, mid-sentence — the single most annoying failure this component can have, because
+it produces a confident hint about half a question.
+
+### Running it without torch
+
+The `silero-vad` package declares a hard dependency on torch, which is an enormous thing
+to install for a 2 MB model, on a machine already short of memory. Its wheel also ships
+the ONNX file, so Susurro loads that directly through `onnxruntime`:
+
+```bash
+pip install --no-deps silero-vad onnxruntime
+```
+
+An energy threshold is available as `backend = "energy"` for setups without the model. It
+is honest about what it is: a loudness test that cannot tell a voice from a slammed door.
+It exists because it is deterministic, which makes it what the tests use, and it is a
+reasonable fallback on a quiet line. `backend = "off"` disables end-of-turn detection
+entirely, which leaves hints manual and everything else working.
 
 ## Speech recognition
 

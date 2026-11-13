@@ -42,7 +42,8 @@ policy, no model. See [Audio pipeline](audio.md).
 
 ### Core
 
-Owns everything expensive. Receives both lanes, decodes them, streams
+Owns everything expensive. Receives both lanes, decodes them, runs voice activity
+detection, streams
 each lane through speech recognition, maintains session context, and drives the language
 model. Also serves the console as static files, so there is one address to remember. See
 [Inference](inference.md).

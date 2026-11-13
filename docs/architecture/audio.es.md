@@ -43,33 +43,53 @@ llegada. Ver [Protocolo](protocol.md#extremo-de-captura).
 
 ## Detección de actividad de voz
 
-!!! warning "Construido a medias"
-    Lo que hay hoy es el filtro de VAD propio del reconocedor, que basta para las fronteras
-    de segmento. El detector separado por carril que se describe abajo todavía no existe, y
-    el evento de fin de turno que depende de él tampoco. Eso es
-    [M4](../roadmap.md#m4-sugerencia-especulativa).
+[Silero VAD](https://github.com/snakers4/silero-vad) corre por carril en el núcleo, en
+`core/vad.py`, por delante del reconocedor. Va en el núcleo y no en el cliente de captura
+por la misma razón que todo lo demás: el cliente se mantiene trivial de portar, y un
+detector de 2 MB no cuesta nada al lado de los modelos ya residentes.
 
-Las fronteras de segmento las resuelve hoy el filtro de VAD incorporado de faster-whisper,
-dentro de `core/stt/whisper.py`. Decide qué partes de una ventana son voz, y una ventana
-que lleva suficiente tiempo en silencio cierra la locución. Un techo de longitud de ventana
-la cierra igualmente, así que quien no hace pausas sigue produciendo finales.
+Produce dos cosas:
 
-Eso cubre lo que necesita el reconocedor y no el segundo requisito. Las sugerencias
-especulativas necesitan saber que **la otra parte dejó de hablar**, como evento y pronto,
-no como efecto secundario de una pasada de transcripción que corre una vez por segundo.
-Para eso hace falta un detector dedicado como
-[Silero VAD](https://github.com/snakers4/silero-vad) corriendo por carril en el núcleo,
-por delante del reconocedor.
+1. **Fronteras de segmento**, para que una pasada de transcripción reciba voz y no
+   silencio.
+2. **Eventos de fin de turno en el carril `far`**, que arrancan una sugerencia antes de que
+   nadie la pida.
 
-Va en el núcleo y no en el cliente de captura por la misma razón que todo lo demás: el
-cliente se mantiene trivial de portar, y el modelo de VAD no cuesta casi nada al lado de
-los modelos ya residentes.
+Lo segundo es la razón de que sea un componente aparte y no algo delegado al reconocedor.
+faster-whisper tiene su propio filtro de VAD y responde bastante bien a la primera
+pregunta, pero solo como efecto secundario de una pasada de transcripción que corre
+aproximadamente una vez por segundo. Una sugerencia especulativa que espere a eso ya se
+gastó casi todo su presupuesto de latencia.
 
-Cuando exista, producirá dos cosas:
+### Histéresis en ambos sentidos
 
-1. **Fronteras de segmento** para el reconocedor, relevando a su filtro interno.
-2. **Eventos de fin de turno** en el carril `far`, que disparan la generación especulativa
-   de sugerencias.
+Una probabilidad cruda por ventana no sirve como evento. Ambos flancos se suavizan, por
+motivos distintos:
+
+| Flanco | Por defecto | Por qué |
+|---|---|---|
+| Abrir una locución | 2 ventanas (~64 ms) | Una puerta que se cierra no es voz. |
+| Cerrarla | 16 ventanas (~512 ms) | Las pausas dentro de una frase son más largas de lo que la gente cree. |
+
+El número de cierre es el que importa. Si se pone demasiado bajo, el fin de turno salta
+durante una respiración, a mitad de frase: el fallo más molesto que puede tener este
+componente, porque produce una sugerencia confiada sobre media pregunta.
+
+### Ejecutarlo sin torch
+
+El paquete `silero-vad` declara una dependencia dura de torch, que es una cosa enorme para
+instalar por un modelo de 2 MB, en una máquina ya justa de memoria. Su wheel trae además el
+fichero ONNX, así que Susurro carga ese directamente con `onnxruntime`:
+
+```bash
+pip install --no-deps silero-vad onnxruntime
+```
+
+Hay un umbral de energía disponible como `backend = "energy"` para instalaciones sin el
+modelo. Es honesto sobre lo que es: una prueba de volumen que no distingue una voz de un
+portazo. Existe porque es determinista, que es lo que lo hace útil para los tests, y es un
+respaldo razonable en una línea silenciosa. `backend = "off"` desactiva la detección de fin
+de turno por completo, lo que deja las sugerencias manuales y todo lo demás funcionando.
 
 ## Reconocimiento de voz
 

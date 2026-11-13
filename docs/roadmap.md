@@ -90,12 +90,21 @@ to accept a second client platform, the protocol was wrong and gets fixed here.
 
 ## M4 — Speculative hint
 
-End-of-turn on the `far` lane starts generation before you ask for it. Cancel and discard
-when the other party resumes.
+**Built.** End-of-turn on the `far` lane starts generation before you ask for it, and the
+other party resuming cancels it. A hint you asked for yourself is never cancelled this
+way — you asked for it.
+
+The recognizer is flushed when the turn ends, before generating. Without that, the hint
+would be written against a transcript missing the sentence it is supposed to answer,
+because the final for it has not been emitted yet.
 
 !!! success "Gate"
     Perceived latency drops measurably against M2 on the same conversations, and false
     starts are not distracting in practice.
+
+    **Not met.** Both halves need real calls to judge, and the detector's positive
+    direction — that it fires on actual speech — has never been exercised here, only its
+    negative direction on silence, noise and tones.
 
 ---
 

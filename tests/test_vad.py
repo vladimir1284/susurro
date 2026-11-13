@@ -1,0 +1,362 @@
+"""Voice activity detection and the speculative hints it drives.
+
+The energy detector is used for the behavioural tests because it is
+deterministic: a tone is loud, silence is not, and there is no model to make
+the outcome depend on hardware or weights. Silero is exercised separately, and
+only in the direction that can honestly be checked here.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import AsyncIterator
+from pathlib import Path
+from urllib.parse import urlparse
+
+import numpy as np
+import pytest
+import websockets
+from websockets.asyncio.server import ServerConnection, serve
+
+from capture.codec import FRAME_BYTES, OpusEncoder
+from core import protocol as p
+from core.llm.fake import CannedHintGenerator
+from core.main import build_detectors
+from core.server import Core
+from core.session.profiles import ProfileStore
+from core.stt.fake import ScriptedRecognizer, ScriptedUtterance
+from core.vad import (
+    WINDOW_MS,
+    WINDOW_SAMPLES,
+    EnergyDetector,
+    SileroDetector,
+    VadEvent,
+    build_detector,
+)
+
+FIXTURES = Path(__file__).parent / "fixtures" / "profiles"
+TOKEN = "test-token"
+
+
+def tone(ms: int, amplitude: int = 8000, hz: int = 300) -> bytes:
+    n = 16 * ms
+    wave = np.sin(2 * np.pi * hz * np.arange(n) / 16000) * amplitude
+    return wave.astype(np.int16).tobytes()
+
+
+def quiet(ms: int) -> bytes:
+    return bytes(2 * 16 * ms)
+
+
+class TestEnergyDetector:
+    def test_silence_produces_no_events(self) -> None:
+        assert EnergyDetector().push(quiet(2000)) == []
+
+    def test_a_loud_signal_opens_an_utterance(self) -> None:
+        detector = EnergyDetector()
+        assert detector.push(tone(500)) == [VadEvent.SPEECH_START]
+        assert detector.speaking is True
+
+    def test_silence_after_speech_closes_it(self) -> None:
+        detector = EnergyDetector()
+        detector.push(tone(500))
+        assert detector.push(quiet(1000)) == [VadEvent.SPEECH_END]
+        assert detector.speaking is False
+
+    def test_a_short_gap_does_not_end_the_turn(self) -> None:
+        # The pauses inside a sentence are longer than people expect. Cutting
+        # on the first quiet window would fire end-of-turn mid-sentence, which
+        # is the most annoying thing this component can do.
+        detector = EnergyDetector(end_windows=16)
+        detector.push(tone(500))
+        assert detector.push(quiet(200)) == []
+        assert detector.push(tone(200)) == []
+        assert detector.speaking is True
+
+    def test_a_single_loud_window_does_not_open_one(self) -> None:
+        # A door closing is not an utterance.
+        detector = EnergyDetector(start_windows=2)
+        assert detector.push(tone(WINDOW_MS)) == []
+
+    def test_a_full_turn_is_one_start_and_one_end(self) -> None:
+        detector = EnergyDetector()
+        events = detector.push(tone(800) + quiet(1000))
+        assert events == [VadEvent.SPEECH_START, VadEvent.SPEECH_END]
+
+    def test_two_turns_produce_two_pairs(self) -> None:
+        detector = EnergyDetector()
+        events = detector.push(tone(500) + quiet(1000) + tone(500) + quiet(1000))
+        assert events == [
+            VadEvent.SPEECH_START,
+            VadEvent.SPEECH_END,
+            VadEvent.SPEECH_START,
+            VadEvent.SPEECH_END,
+        ]
+
+    def test_partial_windows_are_buffered_across_calls(self) -> None:
+        # Audio arrives in 20 ms frames and the detector works on 32 ms
+        # windows, so every push leaves a remainder.
+        detector = EnergyDetector()
+        events = []
+        for _ in range(40):
+            events.extend(detector.push(tone(20)))
+        assert events == [VadEvent.SPEECH_START]
+
+    def test_reset_forgets_the_utterance(self) -> None:
+        detector = EnergyDetector()
+        detector.push(tone(500))
+        detector.reset()
+        assert detector.speaking is False
+        assert detector.push(quiet(1000)) == []
+
+    def test_quiet_speech_below_the_threshold_is_missed(self) -> None:
+        # Documenting a real limitation rather than asserting it away: this is
+        # a loudness threshold, not a speech detector.
+        assert EnergyDetector(threshold=0.1).push(tone(500, amplitude=500)) == []
+
+
+class TestSileroDetector:
+    def test_it_loads_without_torch(self) -> None:
+        # The silero-vad package declares torch; the wheel also ships the ONNX
+        # file, which is all this uses. Installing torch for a 2 MB model would
+        # be absurd on a machine already short of memory.
+        import sys
+
+        SileroDetector()
+        assert "torch" not in sys.modules
+
+    def test_silence_is_not_speech(self) -> None:
+        detector = SileroDetector()
+        assert detector.push(quiet(2000)) == []
+        assert detector.speaking is False
+
+    def test_broadband_noise_is_not_speech(self) -> None:
+        # The thing an energy threshold gets wrong, and the reason Silero is
+        # the default.
+        rng = np.random.default_rng(0)
+        noise = (rng.standard_normal(16000) * 8000).astype(np.int16).tobytes()
+        assert SileroDetector().push(noise) == []
+
+    def test_a_tone_is_not_speech(self) -> None:
+        assert SileroDetector().push(tone(1000)) == []
+
+    def test_positive_detection_is_not_tested_here(self) -> None:
+        # There is no speech audio in this repository, and synthesising
+        # something a speech model accepts is not a test of anything. The
+        # positive direction is verified by using it; the negative direction is
+        # what is checked above.
+        detector = SileroDetector()
+        assert detector.push(quiet(100)) == []
+
+    def test_reset_clears_the_model_state(self) -> None:
+        detector = SileroDetector()
+        detector.push(quiet(100))
+        detector.reset()
+        assert detector.speaking is False
+
+
+class TestBuildDetector:
+    def test_off_means_no_detector(self) -> None:
+        assert build_detector({"backend": "off"}) is None
+
+    def test_energy_is_selected_by_name(self) -> None:
+        assert isinstance(build_detector({"backend": "energy"}), EnergyDetector)
+
+    def test_silero_is_the_default(self) -> None:
+        assert isinstance(build_detector({}), SileroDetector)
+
+    def test_an_unknown_backend_fails_loudly(self) -> None:
+        with pytest.raises(SystemExit, match="unknown vad backend"):
+            build_detector({"backend": "telepathy"})
+
+    def test_tuning_reaches_the_detector(self) -> None:
+        detector = build_detector({"backend": "energy", "end_windows": 3})
+        detector.push(tone(500))
+        assert detector.push(quiet(200)) == [VadEvent.SPEECH_END]
+
+    def test_lanes_get_separate_detectors(self) -> None:
+        # They carry state across windows; sharing one would make each lane's
+        # silence close the other lane's utterance.
+        detectors = build_detectors({"backend": "energy"})
+        assert detectors["far"] is not detectors["mic"]
+
+    def test_window_size_matches_what_silero_expects(self) -> None:
+        assert WINDOW_SAMPLES == 512
+        assert WINDOW_MS == 32
+
+
+SCRIPT = [
+    ScriptedUtterance(lane="far", text="So why did you leave?", frames=2),
+]
+
+
+@pytest.fixture
+async def core() -> Core:
+    return Core(
+        profiles=ProfileStore(FIXTURES),
+        recognizer=ScriptedRecognizer(script=list(SCRIPT), partial_every=50),
+        generator=CannedHintGenerator(chunk_delay_s=0.02),
+        token=TOKEN,
+        detectors=build_detectors({"backend": "energy"}),
+    )
+
+
+@pytest.fixture
+async def url(core: Core) -> AsyncIterator[str]:
+    async def router(connection: ServerConnection) -> None:
+        route = urlparse(connection.request.path).path
+        if route == "/capture":
+            await core.handle_capture(connection)
+        elif route == "/console":
+            await core.handle_console(connection)
+        else:
+            await connection.close(1003, "unknown endpoint")
+
+    async with serve(router, "127.0.0.1", 0) as server:
+        yield f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}"
+
+
+async def open_console(url: str) -> websockets.ClientConnection:
+    ws = await websockets.connect(f"{url}/console?token={TOKEN}")
+    await ws.recv()
+    await ws.send(
+        json.dumps(
+            {
+                "type": "session.config",
+                "profile_id": "en-technical-backend",
+                "language": "en",
+                "mode": "conversational",
+            }
+        )
+    )
+    await ws.recv()
+    await ws.send(json.dumps({"type": "session.start"}))
+    await ws.recv()
+    return ws
+
+
+async def drain(ws: websockets.ClientConnection, kind: str, limit: int = 60) -> dict:
+    for _ in range(limit):
+        event = json.loads(await ws.recv())
+        if event["type"] == kind:
+            return event
+    raise AssertionError(f"no {kind!r} event in {limit} messages")
+
+
+async def send_audio(capture, pcm: bytes, encoder: OpusEncoder, start: int = 0) -> int:
+    """Send PCM as 20 ms Opus frames, the way a real client would."""
+    sent = start
+    for offset in range(0, len(pcm) - FRAME_BYTES + 1, FRAME_BYTES):
+        frame = p.AudioFrame(
+            timestamp_us=sent * 20_000,
+            payload=encoder.encode(pcm[offset : offset + FRAME_BYTES]),
+        )
+        await capture.send(frame.encode())
+        sent += 1
+    return sent
+
+
+class TestSpeculativeHints:
+    async def open_far_lane(self, url: str):
+        capture = await websockets.connect(f"{url}/capture?token={TOKEN}")
+        await capture.send(
+            p.Hello(session_id="s", lane="far", client="test/0.1").to_json()
+        )
+        await capture.recv()
+        return capture
+
+    async def test_the_other_party_falling_silent_starts_a_hint(
+        self, url: str, core: Core
+    ) -> None:
+        console = await open_console(url)
+        capture = await self.open_far_lane(url)
+        encoder = OpusEncoder()
+
+        sent = await send_audio(capture, tone(600), encoder)
+        await send_audio(capture, quiet(1200), encoder, sent)
+
+        start = await drain(console, "hint.start")
+        assert start["trigger"] == "speculative"
+        # Wait for the first chunk: hint.start is broadcast before the task
+        # that calls the generator has run.
+        await drain(console, "hint.delta")
+        # The transcript the hint was written against includes the sentence
+        # that just ended: the recognizer is flushed before generating.
+        assert core.generator.contexts[-1].transcript == ("them: So why did you leave?",)
+        await capture.close()
+        await console.close()
+
+    async def test_the_user_speaking_does_not_start_one(
+        self, url: str, core: Core
+    ) -> None:
+        # Hints are for answering them, not for narrating yourself.
+        console = await open_console(url)
+        capture = await websockets.connect(f"{url}/capture?token={TOKEN}")
+        await capture.send(
+            p.Hello(session_id="s", lane="mic", client="test/0.1").to_json()
+        )
+        await capture.recv()
+        encoder = OpusEncoder()
+        sent = await send_audio(capture, tone(600), encoder)
+        await send_audio(capture, quiet(1200), encoder, sent)
+        await capture.close()
+        assert core.state.active_hint is None
+        await console.close()
+
+    async def test_the_other_party_resuming_cancels_it(
+        self, url: str, core: Core
+    ) -> None:
+        console = await open_console(url)
+        capture = await self.open_far_lane(url)
+        encoder = OpusEncoder()
+
+        sent = await send_audio(capture, tone(600), encoder)
+        sent = await send_audio(capture, quiet(1200), encoder, sent)
+        start = await drain(console, "hint.start")
+        await send_audio(capture, tone(600), encoder, sent)
+
+        end = await drain(console, "hint.end")
+        assert end["hint_id"] == start["hint_id"]
+        assert end["reason"] == "cancelled"
+        await capture.close()
+        await console.close()
+
+    async def test_a_manual_hint_survives_the_other_party_resuming(
+        self, url: str, core: Core
+    ) -> None:
+        # They asked for it. Throwing it away because someone started talking
+        # again would make the button unreliable.
+        console = await open_console(url)
+        capture = await self.open_far_lane(url)
+        encoder = OpusEncoder()
+
+        await console.send(json.dumps({"type": "hint.request", "mode": "conversational"}))
+        start = await drain(console, "hint.start")
+        assert start["trigger"] == "manual"
+
+        await send_audio(capture, tone(600), encoder)
+        assert core.state.active_hint == start["hint_id"]
+        await capture.close()
+        await console.close()
+
+    async def test_nothing_is_spoken_means_nothing_is_written(
+        self, url: str, core: Core
+    ) -> None:
+        # An end-of-turn with an empty transcript is not a question.
+        console = await open_console(url)
+        capture = await self.open_far_lane(url)
+        await send_audio(capture, quiet(2000), OpusEncoder())
+        assert core.state.active_hint is None
+        await capture.close()
+        await console.close()
+
+    async def test_detection_is_off_without_detectors(self, url: str) -> None:
+        plain = Core(
+            profiles=ProfileStore(FIXTURES),
+            recognizer=ScriptedRecognizer(script=list(SCRIPT)),
+            generator=CannedHintGenerator(),
+            token=TOKEN,
+            detectors=None,
+        )
+        await plain.observe_voice("far", tone(600))
+        assert plain.state.active_hint is None

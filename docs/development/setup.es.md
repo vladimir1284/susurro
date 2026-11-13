@@ -13,6 +13,7 @@ susurro/
 ├── core/
 │   ├── protocol.py    # mensajes, framing, validación. Sin E/S.
 │   ├── audio.py       # decodificación Opus, un decoder por carril
+│   ├── vad.py         # actividad de voz por carril; fin de turno en el carril far
 │   ├── server.py      # ambos extremos WebSocket + la consola como ficheros estáticos
 │   ├── main.py        # punto de entrada; backends elegidos por configuración
 │   ├── stt/           # interfaz de reconocedor, fake con guion, faster-whisper

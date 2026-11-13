@@ -139,16 +139,28 @@ class TestRepositoryLayout:
 
 class TestUnbuiltThingsAreMarked:
     @pytest.mark.parametrize(
-        "doc, marker",
-        [
-            ("docs/architecture/audio.md", "Partly built"),
-            ("docs/architecture/audio.es.md", "Construido a medias"),
-        ],
+        "doc", ["docs/architecture/audio.md", "docs/architecture/audio.es.md"]
     )
-    def test_the_voice_detector_is_flagged_as_absent(self, doc: str, marker: str) -> None:
-        # A page that describes a component in the present tense is read as a
-        # description of what exists.
-        assert marker in (ROOT / doc).read_text(encoding="utf-8")
+    def test_the_voice_detector_is_no_longer_flagged_as_absent(self, doc: str) -> None:
+        # This test used to assert the opposite. The detector was documented in
+        # the present tense before it existed, the warning was added when that
+        # was caught, and it comes off now that core/vad.py is real. Keeping
+        # the test inverted rather than deleting it is the point: the next
+        # person to describe something unbuilt has to come here.
+        text = (ROOT / doc).read_text(encoding="utf-8")
+        assert "Partly built" not in text
+        assert "Construido a medias" not in text
+        assert "core/vad.py" in text
+
+    @pytest.mark.parametrize(
+        "doc", ["docs/architecture/audio.md", "docs/architecture/audio.es.md"]
+    )
+    def test_the_energy_detector_limitation_is_stated(self, doc: str) -> None:
+        # It cannot tell a voice from a door. A reader choosing a backend has
+        # to be told that before they pick it for a noisy room.
+        text = (ROOT / doc).read_text(encoding="utf-8").lower()
+        assert "energy" in text or "energía" in text
+        assert "door" in text or "portazo" in text
 
     @pytest.mark.parametrize(
         "doc", ["docs/architecture/inference.md", "docs/architecture/inference.es.md"]

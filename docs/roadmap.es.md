@@ -95,12 +95,21 @@ y se arregla aquí.
 
 ## M4 — Sugerencia especulativa
 
-El fin de turno en el carril `far` arranca la generación antes de que la pidas. Se cancela
-y se descarta cuando la otra parte retoma la palabra.
+**Construido.** El fin de turno en el carril `far` arranca la generación antes de que la
+pidas, y que la otra parte retome la palabra la cancela. Una sugerencia que pediste tú
+nunca se cancela así: la pediste.
+
+El reconocedor se vacía al terminar el turno, antes de generar. Sin eso, la sugerencia se
+escribiría contra una transcripción a la que le falta la frase que debe responder, porque
+su final todavía no se ha emitido.
 
 !!! success "Puerta"
     La latencia percibida baja de forma medible respecto a M2 en las mismas
     conversaciones, y los arranques en falso no distraen en la práctica.
+
+    **Sin cumplir.** Las dos mitades necesitan llamadas reales para juzgarse, y la
+    dirección positiva del detector —que dispare con habla real— nunca se ha ejercitado
+    aquí, solo la negativa con silencio, ruido y tonos.
 
 ---
 

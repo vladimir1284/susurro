@@ -19,6 +19,7 @@ from core.llm.base import HintGenerator
 from core.server import CONSOLE_ROOT, DEFAULT_PORT, Core, load_config, run
 from core.session.profiles import ProfileStore
 from core.stt.base import Recognizer
+from core.vad import Detector, build_detector
 
 log = logging.getLogger("susurro.core")
 
@@ -64,6 +65,17 @@ def build_generator(config: dict[str, Any]) -> HintGenerator:
             temperature=config.get("temperature", 0.3),
         )
     raise SystemExit(f"unknown llm backend {kind!r}: expected 'fake' or 'openai'")
+
+
+def build_detectors(config: dict[str, Any]) -> dict[str, Detector] | None:
+    """One detector per lane, or None when end-of-turn detection is off.
+
+    Detectors carry state across windows, so the lanes cannot share one.
+    """
+    far = build_detector(config)
+    if far is None:
+        return None
+    return {"far": far, "mic": build_detector(config)}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -124,6 +136,7 @@ def main(argv: list[str] | None = None) -> int:
         recognizer=build_recognizer(config.get("stt", {})),
         generator=build_generator(config.get("llm", {})),
         token=token,
+        detectors=build_detectors(config.get("vad", {})),
     )
 
     url = f"http://{settings['host']}:{settings['port']}/?token={token}"

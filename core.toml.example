@@ -16,6 +16,20 @@ language = "en"
 # model = "small.en"
 compute_type = "int8"
 
+[vad]
+# Per-lane voice activity detection. It supplies segment boundaries and, on the
+# far lane, the end-of-turn event that starts a hint before you ask for one.
+# "silero" needs: pip install --no-deps silero-vad onnxruntime
+# "energy" is a plain loudness threshold: no model, but it cannot tell a voice
+# from a door. "off" leaves hints manual.
+backend = "silero"
+threshold = 0.5
+# Consecutive 32 ms windows before an utterance opens and before it closes.
+# The closing number is the one that matters: too low and end-of-turn fires in
+# the middle of a sentence, during a breath.
+start_windows = 2
+end_windows = 16
+
 [llm]
 # "fake" returns canned text. "openai" talks to any OpenAI-compatible server:
 # llama.cpp's server, Ollama, vLLM, LM Studio.

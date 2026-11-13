@@ -42,7 +42,8 @@ buffering, sin modelo. Ver [Pipeline de audio](audio.md).
 
 ### Núcleo
 
-Es dueño de todo lo caro. Recibe ambos carriles, los decodifica,
+Es dueño de todo lo caro. Recibe ambos carriles, los decodifica, ejecuta detección de
+actividad de voz,
 pasa cada carril por reconocimiento de voz, mantiene el contexto de la sesión y maneja el
 modelo de lenguaje. También sirve la consola como ficheros estáticos, así hay una sola
 dirección que recordar. Ver [Inferencia](inference.md).

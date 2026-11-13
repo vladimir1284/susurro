@@ -31,6 +31,7 @@ from core.llm.base import HintContext, HintGenerator
 from core.session.profiles import ProfileError, ProfileStore
 from core.session.state import SessionPhase, SessionState, TransitionError
 from core.stt.base import Recognizer, Segment
+from core.vad import Detector, VadEvent
 
 log = logging.getLogger("susurro.core")
 
@@ -59,12 +60,18 @@ class Core:
     recognizer: Recognizer
     generator: HintGenerator
     token: str
+    #: Per-lane voice activity. ``None`` disables end-of-turn detection, which
+    #: leaves hints manual -- everything else still works.
+    detectors: dict[str, Detector] | None = None
 
     state: SessionState = field(default_factory=SessionState)
     decoder: LaneDecoder = field(default_factory=LaneDecoder, init=False)
     consoles: set[ServerConnection] = field(default_factory=set, init=False)
     transcript: list[str] = field(default_factory=list, init=False)
     _hint_task: asyncio.Task[None] | None = field(default=None, init=False)
+    #: What started the hint currently in flight, so that speech resuming can
+    #: cancel a speculative hint without touching one the user asked for.
+    _hint_trigger: str | None = field(default=None, init=False)
 
     # -- auth --------------------------------------------------------------- #
 
@@ -148,6 +155,7 @@ class Core:
                     continue
                 for segment in self.recognizer.feed(lane, frame.timestamp_us, pcm):
                     await self.emit_segment(segment)
+                await self.observe_voice(lane, pcm)
         except websockets.exceptions.ConnectionClosed:
             pass
         finally:
@@ -232,16 +240,61 @@ class Core:
         self.transcript.clear()
         self.recognizer.reset()
         self.decoder.reset()
+        for detector in (self.detectors or {}).values():
+            detector.reset()
         # Once per session, not once per hint. This is the whole latency
         # argument in one line.
         await self.generator.prefill(profile.preamble())
+
+    # -- voice activity -------------------------------------------------------- #
+
+    async def observe_voice(self, lane: p.Lane, pcm: bytes) -> None:
+        """Turn per-lane speech boundaries into hint lifecycle decisions.
+
+        Only the ``far`` lane matters here. The user talking is not a reason to
+        write them a hint, and it is not a reason to throw one away either --
+        people think out loud while reading.
+        """
+        detector = (self.detectors or {}).get(lane)
+        if detector is None:
+            return
+        for event in detector.push(pcm):
+            if lane != "far":
+                continue
+            if event is VadEvent.SPEECH_START:
+                # Only a speculative hint is abandoned. One the user asked for
+                # stays, because they asked for it.
+                if self._hint_trigger == "speculative":
+                    await self.cancel_hint()
+            elif event is VadEvent.SPEECH_END:
+                await self.speculate()
+
+    async def speculate(self) -> None:
+        """Start writing a hint because the other party stopped talking.
+
+        The recognizer is flushed first. Without that, the hint would be
+        generated against a transcript missing the sentence that just ended --
+        the one it is supposed to answer -- because the final for it has not
+        been emitted yet.
+        """
+        if not self.state.accepts_audio or self.state.active_hint is not None:
+            return
+        for segment in self.recognizer.flush("far"):
+            await self.emit_segment(segment)
+        if not self.transcript:
+            return
+        await self.start_hint(self.state.mode or "conversational", "speculative")
 
     # -- hints --------------------------------------------------------------- #
 
     async def request_hint(self, mode: str) -> None:
         await self.cancel_hint()
+        await self.start_hint(mode, "manual")
+
+    async def start_hint(self, mode: str, trigger: str) -> None:
         hint_id = self.state.begin_hint()
-        await self.broadcast(p.hint_start(hint_id, "manual", mode))  # type: ignore[arg-type]
+        self._hint_trigger = trigger
+        await self.broadcast(p.hint_start(hint_id, trigger, mode))  # type: ignore[arg-type]
         self._hint_task = asyncio.create_task(self.run_hint(hint_id, mode))
 
     async def run_hint(self, hint_id: str, mode: str) -> None:
@@ -266,6 +319,7 @@ class Core:
             await self.broadcast(p.error("hint_failed", str(exc)))
             return
         if self.state.end_hint(hint_id):
+            self._hint_trigger = None
             await self.broadcast(p.hint_end(hint_id, "complete", tokens=tokens))
 
     async def cancel_hint(self, hint_id: str | None = None) -> None:
@@ -279,6 +333,7 @@ class Core:
         with contextlib.suppress(asyncio.CancelledError):
             await task
         self.state.end_hint(active)
+        self._hint_trigger = None
         await self.broadcast(p.hint_end(active, "cancelled"))
 
 

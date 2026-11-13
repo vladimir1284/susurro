@@ -74,6 +74,12 @@ LinkedIn draft if there is a lesson worth writing down.
       `bench/run.py` implementing the M0 procedure in `docs/hardware.md`. Dry-run here
       against toy models to prove the harness, not the hardware.
 
+### Added after WP9, once every queued package was done
+
+- [x] **WP10 — M4, speculative hints**
+      The roadmap milestone, not housekeeping. Per-lane voice activity on the core,
+      end-of-turn on the `far` lane, and a hint that starts writing before anyone asks.
+
 ### Added after WP6, while the Mac mini is still unavailable
 
 - [x] **WP7 — Test CI**
@@ -286,3 +292,26 @@ machine with audio devices.
   what `p.ready()` returns, the payload cap must match the constant, every path drawn in
   the layout must exist, and the estimate warnings must stay until `bench/results/` holds a
   run that is not a dry run. 285 tests pass.
+- `2026-11-13` — WP10 done: **M4 is built**, which is a roadmap milestone rather than more
+  tidying. With every queued package closed, the choice was between inventing work and
+  taking the next real feature. `core/vad.py` runs Silero per lane on the core, loaded
+  straight from the ONNX file the wheel ships — the package declares a hard torch
+  dependency, which is an absurd thing to install for a 2 MB model on a machine already
+  short of memory, so `pip install --no-deps silero-vad onnxruntime` is the whole
+  requirement. An energy threshold is the fallback and what the behavioural tests use,
+  because it is deterministic; it is documented as unable to tell a voice from a door.
+  Hysteresis on both edges, and the closing one is the number that matters: too low and
+  end-of-turn fires during a breath, producing a confident hint about half a question.
+  Server wiring: end-of-turn on `far` flushes the recognizer **before** generating —
+  without that the hint answers a transcript missing the sentence it is meant to answer —
+  then starts a speculative hint. Speech resuming cancels a speculative hint and never a
+  manual one, because the user asked for that one. The user's own lane never triggers
+  anything: hints are for answering them, not for narrating yourself.
+  316 tests pass. What is verified here is only the negative direction — silence, broadband
+  noise and a pure tone all correctly fail to register as speech. That it fires on real
+  speech has never been checked, because this repository ships no speech audio, and the
+  roadmap gate for M4 says so rather than claiming the milestone is finished.
+  One test was inverted rather than deleted: `test_the_voice_detector_is_flagged_as_absent`
+  became `test_the_voice_detector_is_no_longer_flagged_as_absent`. It was added two commits
+  ago to catch a component documented in the present tense before it existed, and keeping
+  it inverted means the next person who does that has to come and look at it.

@@ -13,6 +13,7 @@ susurro/
 ├── core/
 │   ├── protocol.py    # messages, framing, validation. No I/O.
 │   ├── audio.py       # Opus decoding, one decoder per lane
+│   ├── vad.py         # per-lane voice activity; end-of-turn on the far lane
 │   ├── server.py      # both WebSocket endpoints + the console as static files
 │   ├── main.py        # entry point; backends chosen by configuration
 │   ├── stt/           # recognizer interface, scripted fake, faster-whisper
