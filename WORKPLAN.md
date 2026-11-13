@@ -103,3 +103,13 @@ has no LinkedIn access and will not acquire any. The operator reviews and posts.
   Plan written. CI is red: the `docs` workflow fails because `CLOUDFLARE_API_TOKEN` and
   `CLOUDFLARE_ACCOUNT_ID` are not set as repository secrets; writing them requires the
   operator.
+- `2026-11-13` — Repository secrets set. CI build step passes; the deploy step fails with
+  `No access to the specified resource` because the Cloudflare API token carries
+  Workers Scripts **Read** but not **Edit**. A pivot to Cloudflare Pages was attempted and
+  abandoned: Pages requires the project to exist first, and this token cannot create one
+  (`wrangler pages project create` needs `User -> Memberships -> Read`; the REST create
+  returns a generic 8000000). Workers needs no pre-created resource, so the pipeline stays
+  on Workers and the blocker is a single token with `Edit Cloudflare Workers` scope,
+  pending the operator. **This blocks only the published docs site, not any work package.**
+  Treat a red `docs` run with a passing build step and a failing deploy step as this known
+  blocker, not a regression.
