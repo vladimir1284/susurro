@@ -96,6 +96,26 @@ class Core:
         with contextlib.suppress(websockets.exceptions.ConnectionClosed):
             await console.send(message)
 
+    def profiles_event(self) -> str:
+        entries = []
+        for profile_id in self.profiles.list_ids():
+            try:
+                profile = self.profiles.load(profile_id)
+            except ProfileError as exc:
+                # One unreadable file must not hide the rest. The console shows
+                # what loaded; the log says what did not.
+                log.warning("skipping profile %s: %s", profile_id, exc)
+                continue
+            entries.append(
+                {
+                    "id": profile.id,
+                    "label": profile.label,
+                    "language": profile.language,
+                    "mode": profile.mode,
+                }
+            )
+        return p.profiles(entries)
+
     def state_event(self) -> str:
         return p.state(
             session=self.state.phase.value,
@@ -189,6 +209,7 @@ class Core:
             return
 
         self.consoles.add(connection)
+        await connection.send(self.profiles_event())
         await connection.send(self.state_event())
         try:
             async for message in connection:
@@ -214,6 +235,9 @@ class Core:
                             f"session.config asked for {lang!r}"
                         )
                     self.state.configure(profile_id, lang, mode)
+                case p.ProfilesRequest():
+                    await connection.send(self.profiles_event())
+                    return
                 case p.SessionStart():
                     await self.start_session()
                 case p.SessionStop():

@@ -108,7 +108,9 @@ the tests use.
 `http://mac-mini.local:8723/?token=…` from the phone or second screen. The core serves the
 console from the same port as the WebSocket endpoints, so there is one address to remember.
 
-Query parameters select the session:
+The console asks the core which profiles exist and offers them in a picker, so the only
+parameter you actually need is the token. The rest preselect a session, which is useful for
+a bookmark straight into the right one:
 
 | Parameter | Meaning |
 |---|---|

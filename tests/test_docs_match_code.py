@@ -78,17 +78,21 @@ class TestDocumentedExamples:
     def test_every_example_has_a_type_the_code_knows(self) -> None:
         known = {
             "transcript.partial", "transcript.final", "hint.start", "hint.delta",
-            "hint.end", "state", "error", "ready", "hello",
+            "hint.end", "state", "error", "ready", "hello", "profiles",
             "hint.request", "hint.cancel", "session.config", "session.start",
-            "session.stop",
+            "session.stop", "profiles.request",
         }
         unknown = {e["type"] for e in self.examples()} - known
         assert not unknown, f"documented message types the code does not know: {unknown}"
 
     def test_console_command_examples_parse(self) -> None:
-        commands = [e for e in self.examples() if e["type"].startswith(("hint.", "session."))
-                    and e["type"] != "hint.start" and e["type"] != "hint.delta"
-                    and e["type"] != "hint.end"]
+        outbound = {"hint.start", "hint.delta", "hint.end"}
+        commands = [
+            e
+            for e in self.examples()
+            if e["type"].startswith(("hint.", "session.", "profiles."))
+            and e["type"] not in outbound
+        ]
         for example in commands:
             p.parse_console_command(json.dumps(example))
 

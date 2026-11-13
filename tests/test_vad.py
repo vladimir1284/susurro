@@ -243,7 +243,8 @@ async def url(core: Core) -> AsyncIterator[str]:
 
 async def open_console(url: str) -> websockets.ClientConnection:
     ws = await websockets.connect(f"{url}/console?token={TOKEN}")
-    await ws.recv()
+    await ws.recv()  # profiles
+    await ws.recv()  # state
     await ws.send(
         json.dumps(
             {

@@ -7,6 +7,9 @@
 
 export const EMPTY = Object.freeze({
   session: "idle",
+  // What the core will load, so the console can offer a choice instead of
+  // requiring the id to be known in advance.
+  profiles: [],
   lanes: { mic: "down", far: "down" },
   // Committed transcript, oldest first. Never revised.
   lines: [],
@@ -34,6 +37,9 @@ export function apply(state, event) {
           ? { lines: [], partials: { mic: null, far: null }, hint: null }
           : {}),
       };
+
+    case "profiles":
+      return { ...state, profiles: event.profiles };
 
     case "transcript.partial":
       return {

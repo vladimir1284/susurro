@@ -11,6 +11,7 @@ const MODE = params.get("mode") ?? "conversational";
 
 const el = {
   session: document.getElementById("session-pill"),
+  profile: document.getElementById("profile"),
   mic: document.getElementById("lane-mic"),
   far: document.getElementById("lane-far"),
   transcript: document.getElementById("transcript"),
@@ -51,10 +52,12 @@ function render() {
     el[lane].textContent = `${lane} ${state.lanes[lane] === "up" ? "●" : "○"}`;
   }
 
+  renderProfiles();
   renderTranscript();
   renderHint();
 
-  el.start.disabled = isLive(state);
+  el.profile.disabled = isLive(state) || state.profiles.length === 0;
+  el.start.disabled = isLive(state) || !selectedProfile();
   el.stop.disabled = !isLive(state);
   el.hint.disabled = !isLive(state);
 
@@ -65,6 +68,33 @@ function render() {
       return div;
     }),
   );
+}
+
+// Rebuilding a <select> under an open dropdown closes it, so this only
+// touches the DOM when the options have actually changed.
+let renderedProfiles = "";
+
+function renderProfiles() {
+  const signature = state.profiles.map((p) => p.id).join("\u0000");
+  if (signature === renderedProfiles) return;
+  renderedProfiles = signature;
+
+  const previous = el.profile.value || PROFILE;
+  el.profile.replaceChildren(
+    ...state.profiles.map((profile) => {
+      const option = document.createElement("option");
+      option.value = profile.id;
+      option.textContent = `${profile.label} · ${profile.language}`;
+      option.dataset.language = profile.language;
+      option.dataset.mode = profile.mode;
+      return option;
+    }),
+  );
+  if (state.profiles.some((p) => p.id === previous)) el.profile.value = previous;
+}
+
+function selectedProfile() {
+  return state.profiles.find((p) => p.id === el.profile.value) ?? null;
 }
 
 function renderTranscript() {
@@ -114,20 +144,33 @@ function renderHint() {
 }
 
 el.start.addEventListener("click", () => {
-  if (PROFILE) {
-    send({ type: "session.config", profile_id: PROFILE, language: LANGUAGE, mode: MODE });
-  }
+  const profile = selectedProfile();
+  if (!profile) return;
+  // The profile decides the language and the hint style. Sending the query
+  // string's values instead would let the two disagree, and the core rejects
+  // that rather than guessing -- correctly, but the console should not put it
+  // in that position.
+  send({
+    type: "session.config",
+    profile_id: profile.id,
+    language: profile.language,
+    mode: MODE || profile.mode,
+  });
   send({ type: "session.start" });
 });
 el.stop.addEventListener("click", () => send({ type: "session.stop" }));
-el.hint.addEventListener("click", () => send({ type: "hint.request", mode: MODE }));
+el.hint.addEventListener("click", () => send({ type: "hint.request", mode: hintMode() }));
+
+function hintMode() {
+  return MODE || selectedProfile()?.mode || "conversational";
+}
 
 // Space is the hint key: it is the largest target on any keyboard and can be
 // hit without looking down.
 document.addEventListener("keydown", (event) => {
   if (event.code === "Space" && event.target === document.body) {
     event.preventDefault();
-    if (isLive(state)) send({ type: "hint.request", mode: MODE });
+    if (isLive(state)) send({ type: "hint.request", mode: hintMode() });
   }
 });
 

@@ -92,7 +92,9 @@ async def drain(ws: websockets.ClientConnection, kind: str, limit: int = 40) -> 
 
 async def open_console(url: str) -> websockets.ClientConnection:
     ws = await websockets.connect(f"{url}/console?token={TOKEN}")
-    await recv_json(ws)  # opening state event
+    # A console is greeted with the profiles it can choose from, then the
+    # session state.
+    await drain(ws, "state")
     return ws
 
 
@@ -138,6 +140,7 @@ class TestAuthorization:
 class TestConsoleSession:
     async def test_a_console_gets_state_on_connect(self, url: str) -> None:
         async with websockets.connect(f"{url}/console?token={TOKEN}") as ws:
+            assert (await recv_json(ws))["type"] == "profiles"
             event = await recv_json(ws)
             assert event["type"] == "state"
             assert event["session"] == "idle"
@@ -419,3 +422,40 @@ class TestHints:
         assert (await drain(console, "state"))["session"] == "configured"
         assert core.transcript == []
         await console.close()
+
+
+class TestProfileListing:
+    async def test_a_console_is_greeted_with_the_profiles(self, url: str) -> None:
+        async with websockets.connect(f"{url}/console?token={TOKEN}") as ws:
+            event = await recv_json(ws)
+            assert event["type"] == "profiles"
+            assert {entry["id"] for entry in event["profiles"]} == {
+                "en-technical-backend",
+                "es-business-industrial",
+            }
+
+    async def test_the_listing_carries_what_the_picker_renders(self, url: str) -> None:
+        async with websockets.connect(f"{url}/console?token={TOKEN}") as ws:
+            entry = (await recv_json(ws))["profiles"][0]
+            assert set(entry) == {"id", "label", "language", "mode"}
+
+    async def test_it_can_be_asked_for_again(self, url: str) -> None:
+        console = await open_console(url)
+        await console.send(json.dumps({"type": "profiles.request"}))
+        assert (await recv_json(console))["type"] == "profiles"
+        await console.close()
+
+    async def test_an_unreadable_profile_does_not_hide_the_rest(
+        self, tmp_path: Path, core: Core
+    ) -> None:
+        # One bad file in the directory must not leave the console with an
+        # empty picker and no way to start anything.
+        import shutil
+
+        shutil.copy(FIXTURES / "en-technical-backend.json", tmp_path)
+        (tmp_path / "broken.json").write_text("{not json")
+        core.profiles = ProfileStore(tmp_path)
+        listing = json.loads(core.profiles_event())
+        assert [entry["id"] for entry in listing["profiles"]] == [
+            "en-technical-backend"
+        ]

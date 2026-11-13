@@ -337,3 +337,41 @@ class TestDocumentedExamples:
     )
     def test_console_command_examples(self, raw: str) -> None:
         assert p.parse_console_command(raw) is not None
+
+
+class TestProfileListing:
+    """A console should not need to be told profile ids out of band."""
+
+    def test_builds_a_listing(self) -> None:
+        import json as _json
+
+        event = _json.loads(
+            p.profiles(
+                [{"id": "a", "label": "A role", "language": "en", "mode": "technical"}]
+            )
+        )
+        assert event["type"] == "profiles"
+        assert event["profiles"][0]["label"] == "A role"
+
+    def test_an_empty_listing_is_valid(self) -> None:
+        import json as _json
+
+        assert _json.loads(p.profiles([]))["profiles"] == []
+
+    @pytest.mark.parametrize("missing", ["id", "label", "language", "mode"])
+    def test_an_incomplete_entry_is_refused(self, missing: str) -> None:
+        # The console renders every field. A listing missing one produces an
+        # option labelled "undefined", which is worse than an error.
+        entry = {"id": "a", "label": "A", "language": "en", "mode": "technical"}
+        del entry[missing]
+        with pytest.raises(p.MalformedMessage, match=missing):
+            p.profiles([entry])
+
+    def test_the_request_parses(self) -> None:
+        assert p.parse_console_command('{"type":"profiles.request"}') == (
+            p.ProfilesRequest()
+        )
+
+    def test_the_request_takes_no_arguments(self) -> None:
+        with pytest.raises(p.MalformedMessage, match="unknown field"):
+            p.parse_console_command('{"type":"profiles.request","language":"en"}')

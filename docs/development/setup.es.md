@@ -111,7 +111,9 @@ acepte, que es lo que usan los tests.
 sirve la consola desde el mismo puerto que los extremos WebSocket, así que hay una sola
 dirección que recordar.
 
-Los parámetros de consulta seleccionan la sesión:
+La consola le pregunta al núcleo qué perfiles existen y los ofrece en un selector, así que
+el único parámetro que necesitas de verdad es el token. Los demás preseleccionan una
+sesión, lo que sirve para un marcador que entre directo a la correcta:
 
 | Parámetro | Significado |
 |---|---|

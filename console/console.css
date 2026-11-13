@@ -76,6 +76,31 @@ button {
 button:hover:not(:disabled) { border-color: var(--you); }
 button:disabled { opacity: 0.4; cursor: default; }
 
+select {
+  font: inherit;
+  font-size: 15px;
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #222736;
+  color: var(--text);
+  max-width: 44vw;
+}
+
+select:disabled { opacity: 0.4; }
+
+/* Present to a screen reader, absent from a screen where every pixel is
+   competing for a glance. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 #transcript {
   flex: 1;
   overflow-y: auto;

@@ -74,6 +74,7 @@ JSON bidireccional. Sin tramas binarias.
 {"type":"hint.delta","hint_id":"h-93","text":"- Rollback de migración, Q2\n"}
 {"type":"hint.end","hint_id":"h-93","reason":"complete","tokens":38,"ttft_ms":780}
 {"type":"hint.end","hint_id":"h-93","reason":"cancelled"}
+{"type":"profiles","profiles":[{"id":"backend-role-acme","label":"Acme — backend senior","language":"es","mode":"conversational"}]}
 {"type":"state","session":"live","stt":"ready","llm":"ready","lanes":{"mic":"up","far":"up"}}
 {"type":"error","code":"lane_busy","detail":"lane 'mic' is already connected"}
 ```
@@ -90,7 +91,13 @@ lugar de mostrarla.
 {"type":"session.config","profile_id":"backend-role-acme","language":"es","mode":"conversational"}
 {"type":"session.start"}
 {"type":"session.stop"}
+{"type":"profiles.request"}
 ```
+
+A una consola se la saluda con `profiles` antes que con `state`, para que pueda ofrecer una
+elección en lugar de exigir que el identificador se sepa de antemano. `profiles.request`
+vuelve a pedir el listado. Un perfil cuyo fichero no se puede leer se deja fuera y se
+registra: un fichero malo no debe dejar la consola con un selector vacío.
 
 `session.config` debe llegar antes de `session.start`, porque determina el preámbulo
 estático que se prefillea en la

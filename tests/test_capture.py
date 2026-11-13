@@ -208,7 +208,8 @@ class TestClient:
         # recognizer -> console. Every piece is real except the recognizer,
         # which is scripted because this machine cannot host a model.
         console = await websockets.connect(f"{url}/console?token={TOKEN}")
-        await console.recv()
+        await console.recv()  # profiles
+        await console.recv()  # state
         await console.send(
             json.dumps(
                 {

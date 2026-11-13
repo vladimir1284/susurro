@@ -116,12 +116,21 @@ su final todavía no se ha emitido.
 ## M5 — Contexto de sesión
 
 Perfiles: currículum, descripción del puesto o agenda de la reunión, notas. Modos
-predefinidos: conversacional, técnico, reunión de negocio. Edición de perfiles desde la
-consola.
+predefinidos: conversacional, técnico, reunión de negocio.
+
+**Construido a medias.** Los perfiles se cargan de disco, la consola los lista y elige uno,
+y el perfil elegido decide el idioma y el estilo de sugerencia por defecto. El selector se
+bloquea mientras la sesión está en vivo, porque cambiarlo invalidaría la caché prefilleada
+—el núcleo lo rechaza, y desactivar el control es más amable que explicar el rechazo.
+
+Falta todavía: **editar** un perfil desde la consola. Hoy un perfil es un fichero JSON que
+se edita a mano.
 
 !!! success "Puerta"
     Las sugerencias hacen referencia a tu trayectoria real. Cambiar de perfil surte efecto
     con un solo prefill de preámbulo y sin coste medible por sugerencia.
+
+    **Sin medir.** La segunda mitad necesita las cifras de M0.
 
 ---
 

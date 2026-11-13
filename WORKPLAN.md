@@ -76,6 +76,10 @@ LinkedIn draft if there is a lesson worth writing down.
 
 ### Added after WP9, once every queued package was done
 
+- [x] **WP11 — M5 in part: the console picks a profile**
+      The console required the profile id in the query string, which meant hand-editing a
+      URL before a call. It now asks the core what exists.
+
 - [x] **WP10 — M4, speculative hints**
       The roadmap milestone, not housekeeping. Per-lane voice activity on the core,
       end-of-turn on the `far` lane, and a hint that starts writing before anyone asks.
@@ -330,3 +334,19 @@ machine with audio devices.
   because falling back to energy detection is the designed behaviour: a missing optional
   model should cost better detection, not a working core. Verified by hiding the installed
   package and re-running: 23 passed, 6 skipped, nothing failed.
+- `2026-11-13` — WP11 done, article 8 drafted. The console needed a profile id in its query
+  string to start anything, which in practice meant hand-editing a URL before a call. New
+  `profiles` event, sent to a console before `state`, plus a `profiles.request` command to
+  ask again; the console renders a picker from it. The chosen profile supplies the language
+  rather than the query string doing it: the core refuses a `session.config` whose language
+  disagrees with the profile, and the console should not put itself in a position to be
+  rejected. The picker locks while live, because changing it would invalidate the prefilled
+  cache — disabling a control is friendlier than explaining a refusal. A profile whose file
+  is unreadable is skipped and logged, so one bad file cannot leave the picker empty.
+  Two tests changed meaning rather than being deleted, both because the behaviour improved.
+  `test_an_error_from_the_core_is_shown` used to trigger its error by starting with nothing
+  configured; the console no longer allows that, so it now uses a reachable failure instead
+  — the profile is listed and then removed before Start, which is what a rename or a
+  tidy-up does. And the drift guard in `tests/test_docs_match_code.py` failed on the two new
+  message types until they were documented, which is the guard doing exactly its job.
+  334 tests pass.

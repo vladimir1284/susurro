@@ -72,6 +72,7 @@ Bidirectional JSON. No binary frames.
 {"type":"hint.delta","hint_id":"h-93","text":"- Migration rollback, Q2\n"}
 {"type":"hint.end","hint_id":"h-93","reason":"complete","tokens":38,"ttft_ms":780}
 {"type":"hint.end","hint_id":"h-93","reason":"cancelled"}
+{"type":"profiles","profiles":[{"id":"backend-role-acme","label":"Acme — senior backend","language":"en","mode":"conversational"}]}
 {"type":"state","session":"live","stt":"ready","llm":"ready","lanes":{"mic":"up","far":"up"}}
 {"type":"error","code":"lane_busy","detail":"lane 'mic' is already connected"}
 ```
@@ -87,7 +88,13 @@ the other party interrupted. The console discards the partial hint rather than s
 {"type":"session.config","profile_id":"backend-role-acme","language":"en","mode":"conversational"}
 {"type":"session.start"}
 {"type":"session.stop"}
+{"type":"profiles.request"}
 ```
+
+A console is greeted with `profiles` before `state`, so it can offer a choice rather than
+requiring the id to be known in advance. `profiles.request` asks for the listing again. A
+profile whose file is unreadable is left out and logged: one bad file must not leave the
+console with an empty picker.
 
 `session.config` must arrive before `session.start`, because it determines the static
 preamble that gets prefilled into the

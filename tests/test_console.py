@@ -225,6 +225,77 @@ def live_console() -> Iterator[tuple[str, Core]]:
     thread.join(timeout=5)
 
 
+def _serve(core: Core) -> Iterator[str]:
+    """Run a core on its own thread and yield its base URL."""
+    import asyncio
+    import threading
+
+    ready = threading.Event()
+    port: list[int] = []
+    loop = asyncio.new_event_loop()
+    shutdown = asyncio.Event()
+
+    async def router(connection: ServerConnection) -> None:
+        route = urlparse(connection.request.path).path
+        if route == "/capture":
+            await core.handle_capture(connection)
+        elif route == "/console":
+            await core.handle_console(connection)
+        else:
+            await connection.close(1003, "unknown endpoint")
+
+    async def main() -> None:
+        async with serve(
+            router,
+            "127.0.0.1",
+            0,
+            process_request=lambda _conn, request: serve_console(CONSOLE, request),
+        ) as server:
+            port.append(server.sockets[0].getsockname()[1])
+            ready.set()
+            await shutdown.wait()
+
+    def run() -> None:
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(main())
+        loop.close()
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    assert ready.wait(timeout=5), "core did not start"
+    yield f"http://127.0.0.1:{port[0]}"
+    loop.call_soon_threadsafe(shutdown.set)
+    thread.join(timeout=5)
+
+
+def _core(profiles: Path) -> Core:
+    return Core(
+        profiles=ProfileStore(profiles),
+        recognizer=ScriptedRecognizer(script=list(SCRIPT), partial_every=2),
+        generator=CannedHintGenerator(chunk_delay_s=0.01),
+        token=TOKEN,
+    )
+
+
+@pytest.fixture
+def empty_console(tmp_path: Path) -> Iterator[tuple[str, Core]]:
+    core = _core(tmp_path)
+    for url in _serve(core):
+        yield url, core
+
+
+@pytest.fixture
+def disappearing_console(tmp_path: Path) -> Iterator[tuple[str, Path]]:
+    import shutil
+
+    directory = tmp_path / "profiles"
+    directory.mkdir()
+    shutil.copy(FIXTURES / "en-technical-backend.json", directory)
+    core = _core(directory)
+    for url in _serve(core):
+        yield url, directory
+
+
 class TestStaticServing:
     def test_the_index_is_served_at_the_root(self, page: Page, live_console) -> None:
         url, _ = live_console
@@ -257,6 +328,9 @@ class TestConsolePage:
         )
         page.goto(f"{url}/?{query}")
         expect(page.locator("#session-pill")).to_have_text("idle")
+        # The picker is populated from the core, so Start only becomes usable
+        # once the profile list has arrived.
+        expect(page.locator("#start")).to_be_enabled()
 
     def test_controls_follow_the_session(self, page: Page, live_console) -> None:
         url, _ = live_console
@@ -344,10 +418,87 @@ class TestConsolePage:
             expect(row.first).to_contain_text("Tell me about a hard migration.")
             expect(row.first.locator(".who")).to_have_text("them")
 
-    def test_an_error_from_the_core_is_shown(self, page: Page, live_console) -> None:
+    def test_the_picker_is_filled_from_the_core(self, page: Page, live_console) -> None:
+        # The console used to need the profile id in the query string, which
+        # meant hand-editing a URL before a call.
         url, _ = live_console
-        # No profile in the query string, so Start sends session.start with
-        # nothing configured and the core refuses it.
         self.open(page, url)
+        options = page.locator("#profile option")
+        expect(options).to_have_count(2)
+        expect(options.first).to_contain_text("Senior backend")
+
+    def test_start_is_refused_when_there_is_nothing_to_start(
+        self, page: Page, empty_console
+    ) -> None:
+        url, _ = empty_console
+        page.goto(f"{url}/?token={TOKEN}")
+        expect(page.locator("#session-pill")).to_have_text("idle")
+        # Better than letting the core reject it: the console does not offer
+        # an action it knows cannot work.
+        expect(page.locator("#start")).to_be_disabled()
+        expect(page.locator("#profile")).to_be_disabled()
+
+    def test_an_error_from_the_core_is_shown(
+        self, page: Page, disappearing_console
+    ) -> None:
+        # A reachable failure rather than a contrived one: the profile is
+        # listed, then removed before the session starts. A rename or a tidy-up
+        # between opening the console and pressing Start does exactly this.
+        url, directory = disappearing_console
+        page.goto(f"{url}/?token={TOKEN}")
+        expect(page.locator("#start")).to_be_enabled()
+        (directory / "en-technical-backend.json").unlink()
         page.locator("#start").click()
-        expect(page.locator("#errors")).to_contain_text("bad_transition")
+        expect(page.locator("#errors")).to_contain_text("bad_request")
+
+
+class TestProfilePicker:
+    def test_the_view_model_stores_the_listing(self, page: Page, live_console) -> None:
+        url, _ = live_console
+        page.goto(url)
+        result = page.evaluate(
+            """async () => {
+                const m = await import('./state.js');
+                let s = m.initial();
+                s = m.apply(s, {type: 'profiles', profiles: [
+                    {id: 'a', label: 'A', language: 'en', mode: 'technical'}
+                ]});
+                return s.profiles.length;
+            }"""
+        )
+        assert result == 1
+
+    def test_starting_sends_the_profile_s_own_language(
+        self, page: Page, live_console
+    ) -> None:
+        # The profile decides the language; the core refuses a session.config
+        # that disagrees with it. Sending the query string's value instead
+        # would put the console in a position to be rejected.
+        url, core = live_console
+        page.goto(f"{url}/?token={TOKEN}&mode=business")
+        expect(page.locator("#start")).to_be_enabled()
+        page.select_option("#profile", "es-business-industrial")
+        page.locator("#start").click()
+        expect(page.locator("#session-pill")).to_have_text("live")
+        assert core.state.language == "es"
+
+    def test_the_picker_locks_while_live(self, page: Page, live_console) -> None:
+        # Changing it mid-session would invalidate the prefilled cache, which
+        # the core refuses. Disabling it is friendlier than explaining that.
+        url, _ = live_console
+        page.goto(f"{url}/?token={TOKEN}")
+        expect(page.locator("#start")).to_be_enabled()
+        page.locator("#start").click()
+        expect(page.locator("#session-pill")).to_have_text("live")
+        expect(page.locator("#profile")).to_be_disabled()
+        page.locator("#stop").click()
+        expect(page.locator("#profile")).to_be_enabled()
+
+    def test_a_query_string_profile_is_preselected(
+        self, page: Page, live_console
+    ) -> None:
+        # Still supported: a bookmark straight into the right session.
+        url, _ = live_console
+        page.goto(f"{url}/?token={TOKEN}&profile=es-business-industrial")
+        expect(page.locator("#start")).to_be_enabled()
+        expect(page.locator("#profile")).to_have_value("es-business-industrial")

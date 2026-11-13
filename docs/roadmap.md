@@ -111,11 +111,21 @@ because the final for it has not been emitted yet.
 ## M5 — Session context
 
 Profiles: résumé, job description or meeting agenda, notes. Preset modes — conversational,
-technical, business meeting. Profile editing in the console.
+technical, business meeting.
+
+**Partly built.** Profiles load from disk, the console lists them and picks one, and the
+chosen profile decides the language and the default hint style. The picker locks while a
+session is live, because changing it would invalidate the prefilled cache — the core
+refuses that, and disabling the control is friendlier than explaining the refusal.
+
+Still missing: **editing** a profile from the console. Today a profile is a JSON file you
+edit by hand.
 
 !!! success "Gate"
     Hints reference your actual background. A profile switch takes effect with one
     preamble prefill and no measurable per-hint cost.
+
+    **Unmeasured.** The second half needs M0's numbers.
 
 ---
 

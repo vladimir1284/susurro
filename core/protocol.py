@@ -310,6 +310,20 @@ def hint_end(
     return json.dumps(event)
 
 
+def profiles(entries: list[dict[str, str]]) -> str:
+    """The profiles the core can load.
+
+    Sent on request and after ``session.config`` fails to find one. Without it
+    a console has to be told profile ids out of band, which in practice meant
+    hand-editing a URL.
+    """
+    for entry in entries:
+        missing = {"id", "label", "language", "mode"} - set(entry)
+        if missing:
+            raise MalformedMessage(f"profile entry missing {sorted(missing)}")
+    return json.dumps({"type": "profiles", "profiles": entries})
+
+
 def state(session: str, stt: str, llm: str, lanes: dict[str, str]) -> str:
     unknown = set(lanes) - LANES
     if unknown:
@@ -362,6 +376,11 @@ class SessionConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ProfilesRequest:
+    pass
+
+
+@dataclass(frozen=True, slots=True)
 class SessionStart:
     pass
 
@@ -372,7 +391,12 @@ class SessionStop:
 
 
 ConsoleCommand = (
-    HintRequest | HintCancel | SessionConfig | SessionStart | SessionStop
+    HintRequest
+    | HintCancel
+    | SessionConfig
+    | SessionStart
+    | SessionStop
+    | ProfilesRequest
 )
 
 _COMMAND_FIELDS: Final[dict[str, frozenset[str]]] = {
@@ -381,6 +405,7 @@ _COMMAND_FIELDS: Final[dict[str, frozenset[str]]] = {
     "session.config": frozenset({"type", "profile_id", "language", "mode"}),
     "session.start": frozenset({"type"}),
     "session.stop": frozenset({"type"}),
+    "profiles.request": frozenset({"type"}),
 }
 
 
@@ -413,4 +438,6 @@ def parse_console_command(raw: str | bytes) -> ConsoleCommand:
         )
     if kind == "session.start":
         return SessionStart()
+    if kind == "profiles.request":
+        return ProfilesRequest()
     return SessionStop()
