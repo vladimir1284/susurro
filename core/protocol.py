@@ -329,6 +329,24 @@ def profile(entry: dict[str, Any]) -> str:
     return json.dumps({"type": "profile", "profile": entry})
 
 
+def sessions(entries: list[dict[str, Any]], recording: bool) -> str:
+    """Recorded sessions, newest first.
+
+    ``recording`` says whether the core is currently writing them. The console
+    shows it, because a tool that quietly records conversations is not one
+    anybody should trust.
+    """
+    return json.dumps(
+        {"type": "sessions", "recording": recording, "sessions": entries}
+    )
+
+
+def export(session_id: str, markdown: str) -> str:
+    return json.dumps(
+        {"type": "export", "session_id": session_id, "markdown": markdown}
+    )
+
+
 def state(session: str, stt: str, llm: str, lanes: dict[str, str]) -> str:
     unknown = set(lanes) - LANES
     if unknown:
@@ -386,6 +404,23 @@ class ProfilesRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class SessionsRequest:
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class SessionExport:
+    session_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class SessionDelete:
+    """Remove a recording. Deleting has to be as easy as recording."""
+
+    session_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class ProfileRequest:
     """Ask for one profile in full, context included."""
 
@@ -427,6 +462,9 @@ ConsoleCommand = (
     | ProfilesRequest
     | ProfileRequest
     | ProfileSave
+    | SessionsRequest
+    | SessionExport
+    | SessionDelete
 )
 
 #: The sections a profile's context may carry. Mirrors
@@ -441,6 +479,9 @@ _COMMAND_FIELDS: Final[dict[str, frozenset[str]]] = {
     "session.start": frozenset({"type"}),
     "session.stop": frozenset({"type"}),
     "profiles.request": frozenset({"type"}),
+    "sessions.request": frozenset({"type"}),
+    "session.export": frozenset({"type", "session_id"}),
+    "session.delete": frozenset({"type", "session_id"}),
     "profile.request": frozenset({"type", "profile_id"}),
     "profile.save": frozenset(
         {"type", "profile_id", "label", "language", "mode", "context"}
@@ -479,6 +520,12 @@ def parse_console_command(raw: str | bytes) -> ConsoleCommand:
         return SessionStart()
     if kind == "profiles.request":
         return ProfilesRequest()
+    if kind == "sessions.request":
+        return SessionsRequest()
+    if kind == "session.export":
+        return SessionExport(session_id=_require_identifier(obj, "session_id"))
+    if kind == "session.delete":
+        return SessionDelete(session_id=_require_identifier(obj, "session_id"))
     if kind == "profile.request":
         return ProfileRequest(profile_id=_require_identifier(obj, "profile_id"))
     if kind == "profile.save":

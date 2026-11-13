@@ -14,6 +14,7 @@ susurro/
 │   ├── protocol.py    # mensajes, framing, validación. Sin E/S.
 │   ├── audio.py       # decodificación Opus, un decoder por carril
 │   ├── vad.py         # actividad de voz por carril; fin de turno en el carril far
+│   │                  # session/ también tiene history.py: grabación y exportación
 │   ├── server.py      # ambos extremos WebSocket + la consola como ficheros estáticos
 │   ├── main.py        # punto de entrada; backends elegidos por configuración
 │   ├── stt/           # interfaz de reconocedor, fake con guion, faster-whisper
@@ -73,6 +74,8 @@ haya.
 | Ajuste | Valores | Notas |
 |---|---|---|
 | `[stt] backend` | `fake`, `whisper` | `fake` reproduce un guion y no necesita modelo. |
+| `[session] record` | `false`, `true` | Apagado por defecto. Encendido, las sesiones se escriben en `[session] directory`. |
+| `[vad] backend` | `silero`, `energy`, `off` | `off` deja las sugerencias manuales. |
 | `[llm] backend` | `fake`, `openai` | `openai` es cualquier servidor compatible con OpenAI: `llama.cpp`, Ollama, vLLM, LM Studio. |
 
 Instala solo lo que uses: `.[core]` a secas te da los fakes, que bastan para trabajar en la

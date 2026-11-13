@@ -17,6 +17,9 @@ node_modules/
 .env.*
 !.env.example
 
+# Recorded sessions: real conversations, never committed
+sessions/
+
 # Local models / captures / benchmarks
 models/
 captures/

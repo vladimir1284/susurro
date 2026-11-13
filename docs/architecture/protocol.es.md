@@ -76,6 +76,8 @@ JSON bidireccional. Sin tramas binarias.
 {"type":"hint.end","hint_id":"h-93","reason":"cancelled"}
 {"type":"profiles","profiles":[{"id":"backend-role-acme","label":"Acme — backend senior","language":"es","mode":"conversational"}]}
 {"type":"profile","profile":{"id":"backend-role-acme","label":"Acme — backend senior","language":"es","mode":"conversational","context":{"resume":"…"}}}
+{"type":"sessions","recording":false,"sessions":[{"session_id":"2026-11-13T14-02-11Z","profile_id":"backend-role-acme","started_at":"2026-11-13T14:02:11+00:00","ended_at":"2026-11-13T14:48:02+00:00","lines":84,"hints":11}]}
+{"type":"export","session_id":"2026-11-13T14-02-11Z","markdown":"# Session …"}
 {"type":"state","session":"live","stt":"ready","llm":"ready","lanes":{"mic":"up","far":"up"}}
 {"type":"error","code":"lane_busy","detail":"lane 'mic' is already connected"}
 ```
@@ -93,9 +95,31 @@ lugar de mostrarla.
 {"type":"session.start"}
 {"type":"session.stop"}
 {"type":"profiles.request"}
+{"type":"sessions.request"}
+{"type":"session.export","session_id":"2026-11-13T14-02-11Z"}
+{"type":"session.delete","session_id":"2026-11-13T14-02-11Z"}
 {"type":"profile.request","profile_id":"backend-role-acme"}
 {"type":"profile.save","profile_id":"backend-role-acme","label":"Acme — backend senior","language":"es","mode":"conversational","context":{"resume":"…","role":"…","notes":"…"}}
 ```
+
+## Sesiones grabadas
+
+**Apagado por defecto.** El argumento de este proyecto es que una conversación se queda en
+máquinas que son tuyas; escribir cada reunión a disco sin pedirlo lo socavaría. La grabación
+se activa en la configuración del núcleo, y `sessions` lleva un indicador `recording` para
+que la consola pueda decir cuándo está ocurriendo: una herramienta que graba conversaciones
+en silencio no es una en la que nadie deba confiar.
+
+Una sesión grabada es un fichero JSON con el perfil que usó, cuándo corrió, la transcripción
+confirmada y las sugerencias con sus métricas. `session.export` renderiza Markdown a partir
+de él bajo demanda en lugar de guardar una segunda copia, y `session.delete` lo borra:
+borrar tiene que ser tan fácil como grabar. Una sesión vacía no se escribe, así que un
+arranque accidental no entierra las que importan.
+
+Una sugerencia cancelada también se graba. Después resulta útil ver qué estaba a punto de
+decir y si abandonarla fue lo correcto.
+
+## Perfiles
 
 `profiles` lleva solo etiquetas; `profile.request` trae uno completo, contexto incluido,
 para el editor. `profile.save` lo escribe, creando el perfil si el identificador es nuevo,
@@ -141,6 +165,7 @@ suite.
 | `lane_busy` | Ya hay algo conectado en ese carril. |
 | `bad_transition` | Llegó un comando en una fase de sesión que no lo permite: una sugerencia sin sesión en vivo, `session.config` estando en vivo. |
 | `bad_request` | Un perfil falta, es inválido, o no concuerda con el `session.config` que lo nombró. |
+| `history_failed` | La grabación está desactivada, o una sesión grabada falta o no se puede leer. |
 | `hint_failed` | La generación lanzó una excepción. El `hint.end` correspondiente lleva `reason: "error"`. |
 | `protocol_error` | Código base; no se emite directamente. |
 

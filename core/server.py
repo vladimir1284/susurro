@@ -28,6 +28,15 @@ from websockets.http11 import Response
 from core import protocol as p
 from core.audio import DecodeError, LaneDecoder
 from core.llm.base import HintContext, HintGenerator
+from core.session.history import (
+    Hint,
+    HistoryError,
+    HistoryStore,
+    Line,
+    Recording,
+    now,
+    render_markdown,
+)
 from core.session.profiles import Profile, ProfileError, ProfileStore
 from core.session.state import SessionPhase, SessionState, TransitionError
 from core.stt.base import Recognizer, Segment
@@ -63,6 +72,9 @@ class Core:
     #: Per-lane voice activity. ``None`` disables end-of-turn detection, which
     #: leaves hints manual -- everything else still works.
     detectors: dict[str, Detector] | None = None
+    #: Recorded sessions. Disabled unless configured, because a tool that
+    #: writes every conversation to disk unasked is not one to trust.
+    history: HistoryStore | None = None
 
     state: SessionState = field(default_factory=SessionState)
     decoder: LaneDecoder = field(default_factory=LaneDecoder, init=False)
@@ -72,6 +84,8 @@ class Core:
     #: What started the hint currently in flight, so that speech resuming can
     #: cancel a speculative hint without touching one the user asked for.
     _hint_trigger: str | None = field(default=None, init=False)
+    _recording: Recording | None = field(default=None, init=False)
+    _hint_text: dict[str, str] = field(default_factory=dict, init=False)
 
     # -- auth --------------------------------------------------------------- #
 
@@ -115,6 +129,19 @@ class Core:
                 }
             )
         return p.profiles(entries)
+
+    def require_history(self) -> HistoryStore:
+        if self.history is None or not self.history.enabled:
+            raise HistoryError(
+                "recording is disabled; enable [session] record in the core's "
+                "configuration"
+            )
+        return self.history
+
+    def sessions_event(self) -> str:
+        enabled = self.history is not None and self.history.enabled
+        entries = self.history.list_sessions() if enabled else []
+        return p.sessions(entries, recording=enabled)
 
     def state_event(self) -> str:
         return p.state(
@@ -191,6 +218,16 @@ class Core:
             # append-only so the prefix cache survives between hints.
             speaker = "them" if segment.lane == "far" else "me"
             self.transcript.append(f"{speaker}: {segment.text}")
+            if self._recording is not None:
+                self._recording.lines.append(
+                    Line(
+                        lane=segment.lane,
+                        text=segment.text,
+                        t=segment.t,
+                        dur=segment.dur,
+                        seq=segment.seq,
+                    )
+                )
             await self.broadcast(
                 p.transcript_final(
                     segment.lane, segment.text, segment.t, segment.dur, segment.seq
@@ -238,6 +275,19 @@ class Core:
                 case p.ProfilesRequest():
                     await connection.send(self.profiles_event())
                     return
+                case p.SessionsRequest():
+                    await connection.send(self.sessions_event())
+                    return
+                case p.SessionExport(session_id=session_id):
+                    recording = self.require_history().load(session_id)
+                    await connection.send(
+                        p.export(session_id, render_markdown(recording))
+                    )
+                    return
+                case p.SessionDelete(session_id=session_id):
+                    self.require_history().delete(session_id)
+                    await connection.send(self.sessions_event())
+                    return
                 case p.ProfileRequest(profile_id=profile_id):
                     profile = self.profiles.load(profile_id)
                     await connection.send(p.profile(profile.to_dict()))
@@ -252,6 +302,7 @@ class Core:
                 case p.SessionStop():
                     self.state.stop()
                     await self.cancel_hint()
+                    self.finish_recording()
                     self.transcript.clear()
                 case p.HintRequest(mode=mode):
                     await self.request_hint(mode)
@@ -259,10 +310,49 @@ class Core:
                 case p.HintCancel(hint_id=hint_id):
                     await self.cancel_hint(hint_id)
                     return
-        except (TransitionError, ProfileError) as exc:
+        except (TransitionError, ProfileError, HistoryError) as exc:
             await connection.send(p.error(exc.code, str(exc)))
             return
         await self.broadcast(self.state_event())
+
+    def record_hint(
+        self, hint_id: str, mode: str, reason: str, *, tokens: int | None = None
+    ) -> None:
+        text = self._hint_text.pop(hint_id, "")
+        if self._recording is None or not text:
+            return
+        self._recording.hints.append(
+            Hint(
+                hint_id=hint_id,
+                trigger=self._hint_trigger or "manual",
+                mode=mode,
+                text=text,
+                reason=reason,
+                at=self._recording.lines[-1].t if self._recording.lines else 0.0,
+                tokens=tokens,
+            )
+        )
+
+    def finish_recording(self) -> None:
+        """Write the session out, if one was being recorded.
+
+        A failure here is logged and swallowed. Losing a transcript is
+        annoying; raising out of session.stop and leaving the core in a state
+        the console cannot see would be worse.
+        """
+        recording, self._recording = self._recording, None
+        if recording is None or self.history is None:
+            return
+        if not recording.lines and not recording.hints:
+            # Nothing was said. An empty file for every accidental start would
+            # bury the sessions that matter.
+            return
+        recording.ended_at = now()
+        try:
+            path = self.history.save(recording)
+            log.info("recorded session to %s", path)
+        except (HistoryError, OSError):
+            log.exception("could not write the session recording")
 
     async def save_profile(self, command: p.ProfileSave) -> None:
         """Persist an edited profile.
@@ -299,6 +389,16 @@ class Core:
         assert self.state.profile_id is not None
         profile = self.profiles.load(self.state.profile_id)
         self.state.start()
+        self.transcript.clear()
+        self._hint_text.clear()
+        if self.history is not None and self.history.enabled:
+            self._recording = Recording(
+                session_id=now().replace(":", "-"),
+                profile_id=profile.id,
+                language=profile.language,
+                mode=profile.mode,
+                started_at=now(),
+            )
         self.transcript.clear()
         self.recognizer.reset()
         self.decoder.reset()
@@ -369,6 +469,7 @@ class Core:
         try:
             async for chunk in self.generator.stream(context):
                 tokens += 1
+                self._hint_text[hint_id] = self._hint_text.get(hint_id, "") + chunk
                 await self.broadcast(p.hint_delta(hint_id, chunk))
         except asyncio.CancelledError:
             # The cancelling side sends hint.end; sending it here too would
@@ -381,6 +482,7 @@ class Core:
             await self.broadcast(p.error("hint_failed", str(exc)))
             return
         if self.state.end_hint(hint_id):
+            self.record_hint(hint_id, mode, "complete", tokens=tokens)
             self._hint_trigger = None
             await self.broadcast(p.hint_end(hint_id, "complete", tokens=tokens))
 
@@ -395,6 +497,9 @@ class Core:
         with contextlib.suppress(asyncio.CancelledError):
             await task
         self.state.end_hint(active)
+        # A cancelled hint is still recorded: afterwards it is useful to see
+        # what the thing was about to say and whether abandoning it was right.
+        self.record_hint(active, self.state.mode or "conversational", "cancelled")
         self._hint_trigger = None
         await self.broadcast(p.hint_end(active, "cancelled"))
 

@@ -76,6 +76,9 @@ LinkedIn draft if there is a lesson worth writing down.
 
 ### Added after WP9, once every queued package was done
 
+- [x] **WP13 — M6 in part: session recording and export on the core**
+      Recording is off by default, which is the decision rather than the feature.
+
 - [x] **WP12 — M5 complete: the console edits a profile**
       Profiles were JSON files you edited by hand. The console now reads and writes them.
 
@@ -384,3 +387,22 @@ machine with audio devices.
   "saved" and no change. Locally the round trip happened to land before the test typed;
   on CI it did not. The fields are now disabled until the requested profile arrives, with a
   test that types immediately and asserts the value survives.
+- `2026-11-13` — WP13 done. Session recording and Markdown export, in
+  `core/session/history.py`.
+  **The decision, not the feature: recording is off by default.** Everything else in this
+  project keeps a conversation on machines the user owns, and a tool that writes every
+  meeting to disk unasked would undercut the only argument it has. It is switched on in
+  configuration, `sessions` carries a `recording` flag so the console can say when it is
+  happening, recordings land in one directory that is gitignored, and `session.delete`
+  exists because deleting has to be as easy as recording.
+  A session is one JSON file; Markdown is rendered from it on demand rather than stored
+  twice, since a format you can regenerate is not worth keeping. Hints are interleaved with
+  the transcript by the time they were written, because read afterwards what matters is
+  which question a suggestion answered — hints carry an `at` for exactly that, after a
+  first attempt tried to infer the position and was convoluted enough to be wrong.
+  A cancelled hint is recorded too: afterwards it is useful to see what the thing was about
+  to say and whether abandoning it was right. An empty session is not written, so an
+  accidental start does not bury the ones that matter. `finish_recording` logs and swallows
+  a write failure — losing a transcript is annoying, but raising out of `session.stop` and
+  leaving the core in a state the console cannot see would be worse. 391 tests pass.
+  Console interface for it is next.

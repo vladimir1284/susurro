@@ -17,6 +17,7 @@ from typing import Any
 
 from core.llm.base import HintGenerator
 from core.server import CONSOLE_ROOT, DEFAULT_PORT, Core, load_config, run
+from core.session.history import HistoryStore
 from core.session.profiles import ProfileStore
 from core.stt.base import Recognizer
 from core.vad import Detector, build_detector
@@ -78,6 +79,19 @@ def build_detectors(config: dict[str, Any]) -> dict[str, Detector] | None:
     return {"far": far, "mic": build_detector(config)}
 
 
+def build_history(config: dict[str, Any]) -> HistoryStore:
+    """Recorded sessions. Off unless asked for.
+
+    The project's argument is that a conversation stays on machines you own.
+    Writing every meeting to disk by default would undercut it, so this
+    defaults to disabled and the console shows when it is not.
+    """
+    return HistoryStore(
+        directory=Path(config.get("directory", "sessions")),
+        enabled=bool(config.get("record", False)),
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="susurro-core",
@@ -137,6 +151,7 @@ def main(argv: list[str] | None = None) -> int:
         generator=build_generator(config.get("llm", {})),
         token=token,
         detectors=build_detectors(config.get("vad", {})),
+        history=build_history(config.get("session", {})),
     )
 
     url = f"http://{settings['host']}:{settings['port']}/?token={token}"

@@ -74,6 +74,8 @@ Bidirectional JSON. No binary frames.
 {"type":"hint.end","hint_id":"h-93","reason":"cancelled"}
 {"type":"profiles","profiles":[{"id":"backend-role-acme","label":"Acme — senior backend","language":"en","mode":"conversational"}]}
 {"type":"profile","profile":{"id":"backend-role-acme","label":"Acme — senior backend","language":"en","mode":"conversational","context":{"resume":"…"}}}
+{"type":"sessions","recording":false,"sessions":[{"session_id":"2026-11-13T14-02-11Z","profile_id":"backend-role-acme","started_at":"2026-11-13T14:02:11+00:00","ended_at":"2026-11-13T14:48:02+00:00","lines":84,"hints":11}]}
+{"type":"export","session_id":"2026-11-13T14-02-11Z","markdown":"# Session …"}
 {"type":"state","session":"live","stt":"ready","llm":"ready","lanes":{"mic":"up","far":"up"}}
 {"type":"error","code":"lane_busy","detail":"lane 'mic' is already connected"}
 ```
@@ -90,9 +92,31 @@ the other party interrupted. The console discards the partial hint rather than s
 {"type":"session.start"}
 {"type":"session.stop"}
 {"type":"profiles.request"}
+{"type":"sessions.request"}
+{"type":"session.export","session_id":"2026-11-13T14-02-11Z"}
+{"type":"session.delete","session_id":"2026-11-13T14-02-11Z"}
 {"type":"profile.request","profile_id":"backend-role-acme"}
 {"type":"profile.save","profile_id":"backend-role-acme","label":"Acme — senior backend","language":"en","mode":"conversational","context":{"resume":"…","role":"…","notes":"…"}}
 ```
+
+## Recorded sessions
+
+**Off by default.** This project's argument is that a conversation stays on machines you
+own; writing every meeting to disk unasked would undercut it. Recording is switched on in
+the core's configuration, and `sessions` carries a `recording` flag so the console can say
+when it is happening — a tool that quietly records conversations is not one anybody should
+trust.
+
+A recorded session is one JSON file holding the profile it used, when it ran, the committed
+transcript and the hints with their metrics. `session.export` renders Markdown from it on
+demand rather than storing a second copy, and `session.delete` removes it: deleting has to
+be as easy as recording. An empty session is not written at all, so an accidental start
+does not bury the ones that matter.
+
+A cancelled hint is recorded too. Afterwards it is useful to see what the thing was about
+to say and whether abandoning it was right.
+
+## Profiles
 
 `profiles` carries labels only; `profile.request` fetches one in full, context included,
 for the editor. `profile.save` writes it, creating the profile if the id is new, and the
@@ -136,6 +160,7 @@ the suite.
 | `lane_busy` | Something is already connected on that lane. |
 | `bad_transition` | A command arrived in a session phase that does not allow it — a hint with no live session, `session.config` while live. |
 | `bad_request` | A profile is missing, invalid, or disagrees with the `session.config` that named it. |
+| `history_failed` | Recording is disabled, or a recorded session is missing or unreadable. |
 | `hint_failed` | Generation raised. The matching `hint.end` carries `reason: "error"`. |
 | `protocol_error` | Base code; not emitted directly. |
 

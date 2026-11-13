@@ -14,6 +14,7 @@ susurro/
 │   ├── protocol.py    # messages, framing, validation. No I/O.
 │   ├── audio.py       # Opus decoding, one decoder per lane
 │   ├── vad.py         # per-lane voice activity; end-of-turn on the far lane
+│   │                  # session/ also holds history.py: recording and export
 │   ├── server.py      # both WebSocket endpoints + the console as static files
 │   ├── main.py        # entry point; backends chosen by configuration
 │   ├── stt/           # recognizer interface, scripted fake, faster-whisper
@@ -72,6 +73,8 @@ exist.
 | Setting | Values | Notes |
 |---|---|---|
 | `[stt] backend` | `fake`, `whisper` | `fake` replays a script and needs no model. |
+| `[session] record` | `false`, `true` | Off by default. When on, sessions are written to `[session] directory`. |
+| `[vad] backend` | `silero`, `energy`, `off` | `off` leaves hints manual. |
 | `[llm] backend` | `fake`, `openai` | `openai` means any OpenAI-compatible server — `llama.cpp`, Ollama, vLLM, LM Studio. |
 
 Install only what you use: `.[core]` alone gives you the fakes, which is enough to work on

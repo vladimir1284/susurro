@@ -140,9 +140,16 @@ formato.
 
 ## M6 — Pulido
 
-Historial de sesión y exportación de transcripciones. Traducción en vivo. Instaladores
-empaquetados para núcleo y cliente. Documentación de instalación lo bastante buena para
-alguien que no lo construyó.
+**Historial de sesión y exportación: construido en el núcleo.** La grabación está apagada
+por defecto y a propósito: el argumento de este proyecto es que una conversación se queda en
+máquinas que son tuyas, así que escribir cada reunión a disco sin pedirlo lo socavaría.
+Cuando está encendida se le dice a la consola, cada sesión es un fichero JSON, el Markdown
+se renderiza bajo demanda en lugar de guardarse dos veces, y borrar es tan fácil como
+grabar.
+
+Queda por hacer: la interfaz de consola para ello, la traducción en vivo, los instaladores
+empaquetados y una documentación de instalación lo bastante buena para alguien que no
+construyó esto.
 
 ---
 

@@ -26,6 +26,7 @@ from capture.codec import FRAME_SAMPLES, OpusEncoder
 from core import protocol as p
 from core.llm.fake import CannedHintGenerator
 from core.server import Core
+from core.session.history import HistoryStore, Line
 from core.session.profiles import ProfileStore
 from core.stt.fake import ScriptedRecognizer, ScriptedUtterance
 
@@ -616,3 +617,132 @@ class TestProfileEditing:
         assert "shared" in {entry["id"] for entry in listing["profiles"]}
         await first.close()
         await second.close()
+
+
+class TestSessionRecording:
+    @pytest.fixture
+    def recorded(self, tmp_path: Path, core: Core) -> HistoryStore:
+        core.history = HistoryStore(tmp_path, enabled=True)
+        return core.history
+
+    async def test_recording_is_off_unless_configured(self, url: str) -> None:
+        console = await open_console(url)
+        await console.send(json.dumps({"type": "sessions.request"}))
+        event = await recv_json(console)
+        assert event["type"] == "sessions"
+        # The console shows this. A tool that quietly records conversations is
+        # not one anybody should trust.
+        assert event["recording"] is False
+        assert event["sessions"] == []
+        await console.close()
+
+    async def test_exporting_without_recording_says_why(self, url: str) -> None:
+        console = await open_console(url)
+        await console.send(
+            json.dumps({"type": "session.export", "session_id": "whatever"})
+        )
+        error = await recv_json(console)
+        assert error["code"] == "history_failed"
+        assert "configuration" in error["detail"]
+        await console.close()
+
+    async def test_a_session_is_written_when_it_stops(
+        self, url: str, core: Core, recorded
+    ) -> None:
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "technical")
+        core.transcript.append("them: Why did you leave?")
+        core._recording.lines.append(
+            Line(lane="far", text="Why did you leave?", t=1.0, dur=2.0, seq=1)
+        )
+        await console.send(json.dumps({"type": "session.stop"}))
+        await drain(console, "state")
+        assert len(recorded.list_sessions()) == 1
+        await console.close()
+
+    async def test_an_empty_session_is_not_written(
+        self, url: str, core: Core, recorded
+    ) -> None:
+        # An empty file for every accidental start would bury the ones that
+        # matter.
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "technical")
+        await console.send(json.dumps({"type": "session.stop"}))
+        await drain(console, "state")
+        assert recorded.list_sessions() == []
+        await console.close()
+
+    async def test_a_hint_is_recorded_with_the_text_that_was_shown(
+        self, url: str, core: Core, recorded
+    ) -> None:
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await console.send(
+            json.dumps({"type": "hint.request", "mode": "conversational"})
+        )
+        await drain(console, "hint.end")
+        await console.send(json.dumps({"type": "session.stop"}))
+        await drain(console, "state")
+
+        session_id = recorded.list_sessions()[0]["session_id"]
+        hints = recorded.load(session_id).hints
+        assert len(hints) == 1
+        assert "Migration rollback" in hints[0].text
+        assert hints[0].trigger == "manual"
+        await console.close()
+
+    async def test_an_export_renders_markdown(
+        self, url: str, core: Core, recorded
+    ) -> None:
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await console.send(
+            json.dumps({"type": "hint.request", "mode": "conversational"})
+        )
+        await drain(console, "hint.end")
+        await console.send(json.dumps({"type": "session.stop"}))
+        await drain(console, "state")
+
+        session_id = recorded.list_sessions()[0]["session_id"]
+        await console.send(
+            json.dumps({"type": "session.export", "session_id": session_id})
+        )
+        export = await drain(console, "export")
+        assert export["markdown"].startswith("# Session ")
+        assert "Migration rollback" in export["markdown"]
+        await console.close()
+
+    async def test_a_recording_can_be_deleted(
+        self, url: str, core: Core, recorded
+    ) -> None:
+        from core.session.history import Recording, now
+
+        recorded.save(
+            Recording(
+                session_id="2026-01-01T00-00-00Z",
+                profile_id="p",
+                language="en",
+                mode="technical",
+                started_at=now(),
+                lines=[],
+            )
+        )
+        console = await open_console(url)
+        await console.send(
+            json.dumps(
+                {"type": "session.delete", "session_id": "2026-01-01T00-00-00Z"}
+            )
+        )
+        listing = await drain(console, "sessions")
+        assert listing["sessions"] == []
+        await console.close()
+
+    async def test_a_session_id_that_could_escape_is_refused(
+        self, url: str, recorded
+    ) -> None:
+        console = await open_console(url)
+        await console.send(
+            json.dumps({"type": "session.delete", "session_id": "../escaped"})
+        )
+        assert (await recv_json(console))["code"] == "malformed_message"
+        await console.close()

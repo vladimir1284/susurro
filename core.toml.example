@@ -16,6 +16,14 @@ language = "en"
 # model = "small.en"
 compute_type = "int8"
 
+[session]
+# Recording is OFF by default and on purpose: this project's argument is that a
+# conversation stays on machines you own, and writing every meeting to disk
+# unasked would undercut it. When on, the console says so and each session
+# lands in one directory that is easy to find and delete.
+record = false
+directory = "sessions"
+
 [vad]
 # Per-lane voice activity detection. It supplies segment boundaries and, on the
 # far lane, the end-of-turn event that starts a hint before you ask for one.
