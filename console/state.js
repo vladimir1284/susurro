@@ -20,6 +20,12 @@ export const EMPTY = Object.freeze({
   // separately from `profiles` because that list carries labels only.
   editing: null,
   saved: null,
+  // Recorded sessions, and whether the core is writing them right now. The
+  // flag is rendered prominently: a tool that records conversations without
+  // saying so is not one anybody should trust.
+  recording: false,
+  sessions: [],
+  export: null,
   errors: [],
 });
 
@@ -44,6 +50,15 @@ export function apply(state, event) {
 
     case "profiles":
       return { ...state, profiles: event.profiles };
+
+    case "sessions":
+      return { ...state, recording: event.recording, sessions: event.sessions };
+
+    case "export":
+      return {
+        ...state,
+        export: { sessionId: event.session_id, markdown: event.markdown },
+      };
 
     case "profile":
       return { ...state, editing: event.profile, saved: null };

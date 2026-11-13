@@ -125,6 +125,11 @@ a bookmark straight into the right one:
 **Space** requests a hint — the largest target on any keyboard, and the one you can hit
 without looking down.
 
+**History** lists recorded sessions, shows a transcript as Markdown, and downloads or
+deletes one. Deleting takes two clicks: it cannot be undone, and a dialog would be heavier
+than the decision deserves. When the core is recording, a red indicator sits in the header
+for the whole session — the one thing a user must not have to go looking for.
+
 ## Contributing
 
 The project is AGPL-3.0 and public from the first commit. The most useful contributions

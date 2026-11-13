@@ -54,6 +54,7 @@ The plumbing is built and tested. The measurements are not taken.
 | Speech backend (faster-whisper) | Done — `core/stt/whisper.py` |
 | Hint backend (any OpenAI-compatible server) | Done — `core/llm/openai_compat.py` |
 | Voice activity, end-of-turn, speculative hints | Done — `core/vad.py`. Verified on silence, noise and tones; **never exercised on real speech.** |
+| Session recording and export | Done — `core/session/history.py`. **Off by default.** |
 | M0 benchmark harness | Done — `bench/` |
 | **M0 measurements** | **Not taken.** Needs the Mac mini. |
 

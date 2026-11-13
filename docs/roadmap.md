@@ -133,14 +133,15 @@ Profiles remain plain JSON files. The editor is a convenience, not a format.
 
 ## M6 — Polish
 
-**Session history and transcript export: built on the core.** Recording is off by default
-and on purpose — this project's argument is that a conversation stays on machines you own,
-so writing every meeting to disk unasked would undercut it. When it is on, the console is
-told, each session is one JSON file, Markdown is rendered on demand rather than stored
-twice, and deleting is as easy as recording.
+**Session history and transcript export: built.** Recording is off by default and on
+purpose — this project's argument is that a conversation stays on machines you own, so
+writing every meeting to disk unasked would undercut it. When it is on, a red indicator
+sits in the console's header for the whole session. Each session is one JSON file, Markdown
+is rendered on demand rather than stored twice, and the console lists, opens, downloads and
+deletes them. Deleting takes two clicks.
 
-Still to do: the console interface for it, live translation, packaged installers, and setup
-documentation good enough for someone who did not build this.
+Still to do: live translation, packaged installers, and setup documentation good enough for
+someone who did not build this.
 
 ---
 

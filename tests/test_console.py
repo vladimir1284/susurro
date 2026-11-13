@@ -606,3 +606,160 @@ class TestProfileEditor:
         page.locator("#editor-save").click()
         expect(page.locator("#editor-status")).to_have_text("saved")
         expect(page.locator("#editor-label")).to_have_value("Typed immediately")
+
+
+class TestSessionHistory:
+    @pytest.fixture
+    def recorded_console(self, tmp_path: Path) -> Iterator[tuple[str, Core]]:
+        import shutil
+
+        from core.session.history import HistoryStore, Line, Recording
+
+        profiles = tmp_path / "profiles"
+        profiles.mkdir()
+        shutil.copy(FIXTURES / "en-technical-backend.json", profiles)
+        core = _core(profiles)
+        core.history = HistoryStore(tmp_path / "sessions", enabled=True)
+        past = Recording(
+            session_id="2026-11-12T09-30-00Z",
+            profile_id="en-technical-backend",
+            language="en",
+            mode="technical",
+            started_at="2026-11-12T09:30:00+00:00",
+            ended_at="2026-11-12T10:05:00+00:00",
+            lines=[Line(lane="far", text="Why did you leave?", t=1.0, dur=2.0, seq=1)],
+        )
+        core.history.save(past)
+        for url in _serve(core):
+            yield url, core
+
+    def open_history(self, page: Page, url: str) -> None:
+        page.goto(f"{url}/?token={TOKEN}")
+        expect(page.locator("#start")).to_be_enabled()
+        page.locator("#history").click()
+        expect(page.locator("#history-panel")).to_be_visible()
+
+    def test_the_recording_indicator_is_absent_when_nothing_is_recorded(
+        self, page: Page, live_console
+    ) -> None:
+        url, _ = live_console
+        self.open_history(page, url)
+        expect(page.locator("#recording-pill")).to_be_hidden()
+        expect(page.locator("#history-empty")).to_contain_text("Recording is off")
+
+    def test_the_recording_indicator_is_impossible_to_miss_when_it_is_on(
+        self, page: Page, recorded_console
+    ) -> None:
+        # The one thing a user must not have to go looking for.
+        url, _ = recorded_console
+        self.open_history(page, url)
+        expect(page.locator("#recording-pill")).to_be_visible()
+        expect(page.locator("#recording-pill")).to_contain_text("recording")
+
+    def test_sessions_are_listed_with_what_they_contain(
+        self, page: Page, recorded_console
+    ) -> None:
+        url, _ = recorded_console
+        self.open_history(page, url)
+        row = page.locator("#history-list li").first
+        expect(row).to_contain_text("2026-11-12")
+        expect(row).to_contain_text("en-technical-backend")
+        expect(row).to_contain_text("1 lines")
+
+    def test_opening_one_shows_its_transcript(
+        self, page: Page, recorded_console
+    ) -> None:
+        url, _ = recorded_console
+        self.open_history(page, url)
+        page.locator("#history-list li .view").first.click()
+        expect(page.locator("#export-text")).to_contain_text("Why did you leave?")
+        expect(page.locator("#export-text")).to_contain_text("**Them:**")
+
+    def test_the_transcript_can_be_downloaded(
+        self, page: Page, recorded_console
+    ) -> None:
+        url, _ = recorded_console
+        self.open_history(page, url)
+        page.locator("#history-list li .view").first.click()
+        link = page.locator("#export-download")
+        expect(link).to_have_attribute("download", "susurro-2026-11-12T09-30-00Z.md")
+        assert link.get_attribute("href").startswith("blob:")
+
+    def test_going_back_returns_to_the_list(
+        self, page: Page, recorded_console
+    ) -> None:
+        url, _ = recorded_console
+        self.open_history(page, url)
+        page.locator("#history-list li .view").first.click()
+        expect(page.locator("#export-view")).to_be_visible()
+        page.locator("#export-close").click()
+        expect(page.locator("#export-view")).to_be_hidden()
+        expect(page.locator("#history-list")).to_be_visible()
+
+    def test_deleting_takes_two_clicks(
+        self, page: Page, recorded_console
+    ) -> None:
+        # Deleting a transcript cannot be undone. One click would be careless;
+        # a dialog would be heavier than the decision deserves.
+        url, core = recorded_console
+        self.open_history(page, url)
+        delete = page.locator("#history-list li .delete").first
+        delete.click()
+        expect(delete).to_have_text("Delete?")
+        assert len(core.history.list_sessions()) == 1
+
+        page.locator("#history-list li .delete").first.click()
+        expect(page.locator("#history-list li")).to_have_count(0)
+        assert core.history.list_sessions() == []
+
+    def test_closing_the_panel_leaves_the_transcript_alone(
+        self, page: Page, recorded_console
+    ) -> None:
+        url, _ = recorded_console
+        self.open_history(page, url)
+        page.locator("#history-close").click()
+        expect(page.locator("#history-panel")).to_be_hidden()
+        expect(page.locator("#transcript")).to_be_visible()
+
+
+class TestHistoryViewModel:
+    """`console/state.js` on the history events, without a server."""
+
+    @pytest.fixture
+    def run_js(self, page: Page, live_console):
+        url, _ = live_console
+        page.goto(url)
+
+        def run(body: str, events: list[dict]):
+            return page.evaluate(
+                """async ([body, events]) => {
+                    const m = await import('./state.js');
+                    let state = m.initial();
+                    for (const event of events) state = m.apply(state, event);
+                    return new Function('state', 'm', body)(state, m);
+                }""",
+                [body, events],
+            )
+
+        return run
+
+    def test_recording_defaults_to_off(self, run_js) -> None:
+        assert run_js("return state.recording", []) is False
+
+    def test_the_flag_follows_the_core(self, run_js) -> None:
+        events = [{"type": "sessions", "recording": True, "sessions": []}]
+        assert run_js("return state.recording", events) is True
+
+    def test_a_listing_replaces_the_previous_one(self, run_js) -> None:
+        # A delete answers with a fresh listing; merging would leave the
+        # deleted session on screen.
+        events = [
+            {"type": "sessions", "recording": True, "sessions": [{"session_id": "a"}]},
+            {"type": "sessions", "recording": True, "sessions": []},
+        ]
+        assert run_js("return state.sessions.length", events) == 0
+
+    def test_an_export_is_held_until_replaced(self, run_js) -> None:
+        events = [{"type": "export", "session_id": "a", "markdown": "# Session a"}]
+        assert run_js("return state.export.markdown", events) == "# Session a"
+        assert run_js("return state.export.sessionId", events) == "a"

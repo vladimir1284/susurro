@@ -32,11 +32,27 @@ const el = {
   editorSave: document.getElementById("editor-save"),
   editorClose: document.getElementById("editor-close"),
   editorStatus: document.getElementById("editor-status"),
+  recordingPill: document.getElementById("recording-pill"),
+  history: document.getElementById("history"),
+  historyPanel: document.getElementById("history-panel"),
+  historyList: document.getElementById("history-list"),
+  historyEmpty: document.getElementById("history-empty"),
+  historyClose: document.getElementById("history-close"),
+  exportView: document.getElementById("export-view"),
+  exportTitle: document.getElementById("export-title"),
+  exportText: document.getElementById("export-text"),
+  exportDownload: document.getElementById("export-download"),
+  exportClose: document.getElementById("export-close"),
 };
 
 // The editor is opened by the user, not by the arrival of a profile: a
 // `profile` event also answers a refresh, and popping the panel open under
 // someone mid-call would be hostile.
+let historyOpen = false;
+// Deleting a transcript is not undoable, so the first click arms the button
+// and the second does it. A dialog would be heavier; doing it on one click
+// would be worse.
+let armedDelete = null;
 let editorOpen = false;
 let loadedProfile = null;
 // Which profile the editor is waiting for. Until it arrives the fields are
@@ -84,6 +100,7 @@ function render() {
 
   renderProfiles();
   renderEditor();
+  renderHistory();
   renderTranscript();
   renderHint();
 
@@ -138,6 +155,82 @@ const EDITOR_FIELDS = [
   "editorLabel", "editorLanguage", "editorMode",
   "editorResume", "editorRole", "editorNotes", "editorSave",
 ];
+
+function renderHistory() {
+  // Shown whenever the core is recording, open panel or not. This is the one
+  // indicator the user must not have to go looking for.
+  el.recordingPill.hidden = !state.recording;
+  el.historyPanel.hidden = !historyOpen;
+  if (!historyOpen) return;
+
+  const showingExport = state.export !== null;
+  el.exportView.hidden = !showingExport;
+  el.historyList.hidden = showingExport;
+
+  if (showingExport) {
+    el.exportTitle.textContent = state.export.sessionId;
+    el.exportText.textContent = state.export.markdown;
+    const blob = new Blob([state.export.markdown], { type: "text/markdown" });
+    URL.revokeObjectURL(el.exportDownload.href);
+    el.exportDownload.href = URL.createObjectURL(blob);
+    el.exportDownload.setAttribute(
+      "download",
+      `susurro-${state.export.sessionId}.md`,
+    );
+    return;
+  }
+
+  el.historyEmpty.hidden = state.sessions.length > 0;
+  el.historyEmpty.textContent = state.recording
+    ? "Nothing recorded yet."
+    : "Recording is off. Enable [session] record in the core's configuration.";
+
+  el.historyList.replaceChildren(
+    ...state.sessions.map((session) => sessionRow(session)),
+  );
+}
+
+function sessionRow(session) {
+  const row = document.createElement("li");
+  row.dataset.sessionId = session.session_id;
+
+  const when = document.createElement("span");
+  when.className = "when";
+  when.textContent = session.started_at.replace("T", " ").replace("+00:00", " UTC");
+
+  const about = document.createElement("span");
+  about.className = "about";
+  about.textContent = `${session.profile_id} · ${session.lines} lines · ${session.hints} hints`;
+
+  const spacer = document.createElement("span");
+  spacer.className = "spacer";
+
+  const view = document.createElement("button");
+  view.type = "button";
+  view.className = "view";
+  view.textContent = "Open";
+  view.addEventListener("click", () =>
+    send({ type: "session.export", session_id: session.session_id }),
+  );
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "delete";
+  const armed = armedDelete === session.session_id;
+  remove.textContent = armed ? "Delete?" : "Delete";
+  remove.addEventListener("click", () => {
+    if (armedDelete === session.session_id) {
+      armedDelete = null;
+      send({ type: "session.delete", session_id: session.session_id });
+    } else {
+      armedDelete = session.session_id;
+      render();
+    }
+  });
+
+  row.append(when, about, spacer, view, remove);
+  return row;
+}
 
 function renderEditor() {
   el.editor.hidden = !editorOpen;
@@ -231,6 +324,24 @@ el.start.addEventListener("click", () => {
   send({ type: "session.start" });
 });
 el.stop.addEventListener("click", () => send({ type: "session.stop" }));
+
+el.history.addEventListener("click", () => {
+  historyOpen = true;
+  armedDelete = null;
+  state = { ...state, export: null };
+  send({ type: "sessions.request" });
+  render();
+});
+
+el.historyClose.addEventListener("click", () => {
+  historyOpen = false;
+  render();
+});
+
+el.exportClose.addEventListener("click", () => {
+  state = { ...state, export: null };
+  render();
+});
 
 el.edit.addEventListener("click", () => {
   const profile = selectedProfile();

@@ -128,6 +128,11 @@ sesión, lo que sirve para un marcador que entre directo a la correcta:
 **Espacio** pide una sugerencia: es la tecla más grande de cualquier teclado y la única que
 puedes acertar sin mirar hacia abajo.
 
+**History** lista las sesiones grabadas, muestra una transcripción en Markdown y la descarga
+o la borra. Borrar cuesta dos clics: no se puede deshacer, y un diálogo pesaría más de lo
+que la decisión merece. Cuando el núcleo está grabando, un indicador rojo se queda en la
+cabecera toda la sesión: lo único que un usuario no debe tener que ir a buscar.
+
 ## Contribuir
 
 El proyecto es AGPL-3.0 y público desde el primer commit. Las contribuciones más útiles al

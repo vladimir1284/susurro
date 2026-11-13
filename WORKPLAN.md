@@ -76,6 +76,9 @@ LinkedIn draft if there is a lesson worth writing down.
 
 ### Added after WP9, once every queued package was done
 
+- [x] **WP14 — M6: the console side of history**
+      List, open, download and delete recorded sessions, and show when recording is on.
+
 - [x] **WP13 — M6 in part: session recording and export on the core**
       Recording is off by default, which is the decision rather than the feature.
 
@@ -406,3 +409,14 @@ machine with audio devices.
   a write failure — losing a transcript is annoying, but raising out of `session.stop` and
   leaving the core in a state the console cannot see would be worse. 391 tests pass.
   Console interface for it is next.
+- `2026-11-13` — WP14 done. The console lists recorded sessions, opens one as Markdown,
+  downloads it and deletes it. Three decisions worth keeping:
+  A red **recording** indicator sits in the header whenever the core is writing sessions,
+  open panel or not. It is the one thing a user must not have to go looking for, and it
+  does not live inside the panel that would have to be opened to find it.
+  Deleting takes two clicks — the first arms the button, the second does it. A transcript
+  cannot be recovered, so one click is careless; a modal dialog would weigh more than the
+  decision deserves.
+  With recording off, the empty state says *why* and names the setting that turns it on,
+  rather than showing a blank list that looks like a bug.
+  403 tests pass.

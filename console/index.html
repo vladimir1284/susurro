@@ -13,6 +13,7 @@
   <span class="pill" id="session-pill" data-session="idle">idle</span>
   <span class="pill" id="lane-mic" data-up="false">mic</span>
   <span class="pill" id="lane-far" data-up="false">far</span>
+  <span class="pill" id="recording-pill" hidden>● recording</span>
   <span class="spacer"></span>
   <label class="visually-hidden" for="profile">Profile</label>
   <select id="profile" aria-label="Profile"></select>
@@ -20,7 +21,27 @@
   <button id="hint-button" type="button" disabled>Hint</button>
   <button id="stop" type="button" disabled>Stop</button>
   <button id="edit" type="button" disabled>Edit</button>
+  <button id="history" type="button">History</button>
 </header>
+
+<section id="history-panel" aria-label="Recorded sessions" hidden>
+  <div class="row">
+    <strong>Recorded sessions</strong>
+    <span class="spacer"></span>
+    <button id="history-close" type="button">Close</button>
+  </div>
+  <p id="history-empty" hidden></p>
+  <ul id="history-list"></ul>
+  <div id="export-view" hidden>
+    <div class="row">
+      <strong id="export-title"></strong>
+      <span class="spacer"></span>
+      <a id="export-download" download>Download</a>
+      <button id="export-close" type="button">Back</button>
+    </div>
+    <pre id="export-text"></pre>
+  </div>
+</section>
 
 <section id="editor" aria-label="Profile editor" hidden>
   <div class="row">
