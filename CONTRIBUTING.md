@@ -25,13 +25,16 @@ not leave out a run that failed a gate — a failure on your hardware is the res
 sudo apt-get install -y libopus0          # opuslib binds it through ctypes
 python3 -m venv .venv
 .venv/bin/pip install -e ".[core,openai,whisper,dev]"
+.venv/bin/pip install --no-deps silero-vad   # ONNX model only; the package declares torch
 .venv/bin/playwright install chromium     # for the console tests
 .venv/bin/python -m pytest -q
 .venv/bin/ruff check .
 ```
 
-The suite runs without any model and takes well under a minute. One test is skipped by
-default: it loads a real speech model, and is enabled with `SUSURRO_SLOW_TESTS=1`.
+The suite runs without any language model and takes well under a minute. Tests that need
+something absent skip with a message saying what to install, rather than failing: the
+Silero detector tests if you skipped the `--no-deps` line above, and one test that loads a
+real speech model, enabled with `SUSURRO_SLOW_TESTS=1`.
 
 ## Conventions
 

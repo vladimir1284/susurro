@@ -33,6 +33,12 @@ jobs:
       - name: Install the project
         run: pip install -e ".[core,openai,whisper,dev]"
 
+      # Not an extra, and cannot be: the package declares a hard torch
+      # dependency and only the ONNX file it ships is used. The documented
+      # install is this exact command, so CI runs the documented install.
+      - name: Install the Silero model
+        run: pip install --no-deps silero-vad
+
       - name: Lint
         run: ruff check .
 

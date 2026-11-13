@@ -315,3 +315,17 @@ machine with audio devices.
   became `test_the_voice_detector_is_no_longer_flagged_as_absent`. It was added two commits
   ago to catch a component documented in the present tense before it existed, and keeping
   it inverted means the next person who does that has to come and look at it.
+- `2026-11-13` — Fixed a red build I pushed myself, which breaks rule 2 of this file. The
+  Silero tests passed here because the model had been installed by hand during development
+  and never added to anything CI reads; CI had no `silero-vad` and six tests failed on it,
+  plus one asserting it was the default. The rule exists for exactly this: "passes on my
+  machine" is the failure mode, and a green local run is not evidence when the local
+  machine has something installed by hand.
+  Fixed in three places rather than one. CI now runs the documented install — the package
+  cannot be an extra, because it declares a hard torch dependency and only the ONNX file it
+  ships is used. The Silero tests skip with a message naming the command when the model is
+  absent, so a contributor is told what to install instead of handed six failures. And
+  `test_silero_is_the_default` now asserts the fallback explicitly when it is unavailable,
+  because falling back to energy detection is the designed behaviour: a missing optional
+  model should cost better detection, not a working core. Verified by hiding the installed
+  package and re-running: 23 passed, 6 skipped, nothing failed.

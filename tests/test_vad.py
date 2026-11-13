@@ -38,6 +38,24 @@ FIXTURES = Path(__file__).parent / "fixtures" / "profiles"
 TOKEN = "test-token"
 
 
+def silero_available() -> bool:
+    try:
+        SileroDetector()
+    except (FileNotFoundError, ImportError):
+        return False
+    return True
+
+
+#: Silero cannot be a normal dependency: its package declares torch and only
+#: the ONNX file it ships is used. A contributor who skipped the documented
+#: `pip install --no-deps silero-vad` should be told that, not handed six
+#: failures.
+needs_silero = pytest.mark.skipif(
+    not silero_available(),
+    reason="run `pip install --no-deps silero-vad onnxruntime` to exercise Silero",
+)
+
+
 def tone(ms: int, amplitude: int = 8000, hz: int = 300) -> bytes:
     n = 16 * ms
     wave = np.sin(2 * np.pi * hz * np.arange(n) / 16000) * amplitude
@@ -115,6 +133,7 @@ class TestEnergyDetector:
         assert EnergyDetector(threshold=0.1).push(tone(500, amplitude=500)) == []
 
 
+@needs_silero
 class TestSileroDetector:
     def test_it_loads_without_torch(self) -> None:
         # The silero-vad package declares torch; the wheel also ships the ONNX
@@ -162,8 +181,14 @@ class TestBuildDetector:
     def test_energy_is_selected_by_name(self) -> None:
         assert isinstance(build_detector({"backend": "energy"}), EnergyDetector)
 
-    def test_silero_is_the_default(self) -> None:
-        assert isinstance(build_detector({}), SileroDetector)
+    def test_silero_is_the_default_when_it_is_available(self) -> None:
+        detector = build_detector({})
+        if silero_available():
+            assert isinstance(detector, SileroDetector)
+        else:
+            # Falling back rather than refusing to start: a missing optional
+            # model should cost you better detection, not a working core.
+            assert isinstance(detector, EnergyDetector)
 
     def test_an_unknown_backend_fails_loudly(self) -> None:
         with pytest.raises(SystemExit, match="unknown vad backend"):
