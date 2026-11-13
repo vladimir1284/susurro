@@ -21,7 +21,9 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import websockets
-from websockets.asyncio.server import ServerConnection, serve
+from websockets.asyncio.server import Request, ServerConnection, serve
+from websockets.datastructures import Headers
+from websockets.http11 import Response
 
 from core import protocol as p
 from core.llm.base import HintContext, HintGenerator
@@ -32,6 +34,18 @@ from core.stt.base import Recognizer, Segment
 log = logging.getLogger("susurro.core")
 
 DEFAULT_PORT = 8723
+
+#: The console is static files with no build step, served from the same port as
+#: the WebSocket endpoints so there is one address to remember and no CORS.
+CONSOLE_ROOT = Path(__file__).resolve().parent.parent / "console"
+
+CONTENT_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".json": "application/json",
+}
 
 #: Close codes. 1008 is "policy violation", which is what a bad token is.
 CLOSE_UNAUTHORIZED = 1008
@@ -262,7 +276,43 @@ class Core:
         await self.broadcast(p.hint_end(active, "cancelled"))
 
 
-async def run(core: Core, host: str, port: int) -> None:
+def serve_console(root: Path, request: Request) -> Response | None:
+    """Answer a plain HTTP request with a console file.
+
+    Returning ``None`` lets the request continue as a WebSocket handshake, which
+    is how both protocols share one port.
+    """
+    if request.headers.get("Upgrade", "").lower() == "websocket":
+        return None
+
+    route = urlparse(request.path).path
+    relative = "index.html" if route in ("/", "") else route.lstrip("/")
+    target = (root / relative).resolve()
+    if not target.is_relative_to(root.resolve()) or not target.is_file():
+        return Response(404, "Not Found", Headers({"Content-Length": "0"}), b"")
+
+    body = target.read_bytes()
+    content_type = CONTENT_TYPES.get(target.suffix, "application/octet-stream")
+    return Response(
+        200,
+        "OK",
+        Headers(
+            {
+                "Content-Type": content_type,
+                "Content-Length": str(len(body)),
+                # The console is served from the operator's own machine and
+                # changes whenever the core is updated. Caching it only makes a
+                # stale UI harder to notice.
+                "Cache-Control": "no-store",
+            }
+        ),
+        body,
+    )
+
+
+async def run(
+    core: Core, host: str, port: int, console_root: Path = CONSOLE_ROOT
+) -> None:
     async def router(connection: ServerConnection) -> None:
         route = urlparse(connection.request.path).path
         if route == "/capture":
@@ -272,7 +322,11 @@ async def run(core: Core, host: str, port: int) -> None:
         else:
             await connection.close(1003, "unknown endpoint")
 
-    async with serve(router, host, port):
+    def process_request(connection: ServerConnection, request: Request) -> Response | None:
+        del connection
+        return serve_console(console_root, request)
+
+    async with serve(router, host, port, process_request=process_request):
         log.info("listening on ws://%s:%d", host, port)
         await asyncio.Future()
 

@@ -62,7 +62,7 @@ LinkedIn draft if there is a lesson worth writing down.
       forever for deterministic tests). `capture/backends/pipewire.py` written but
       untested — no audio devices in this container. Opus round-trip tests.
 
-- [ ] **WP4 — Console**
+- [x] **WP4 — Console**
       Static HTML/CSS/JS. Two transcript lanes, partial vs final rendering, hint area,
       controls. Playwright test against the core running fake backends.
 
@@ -84,7 +84,7 @@ has no LinkedIn access and will not acquire any. The operator reviews and posts.
 2. Two microphones, zero machine learning (the unmixed-lanes decision) — drafted
 3. Prompt caching, explained without jargon — drafted
 4. Building a system you cannot run (fakes, honest labels, measuring your own code) — drafted
-5. Designing a UI you read while keeping eye contact
+5. Designing a UI you read while keeping eye contact — drafted
 6. What building against a 16 GB ceiling forces you to decide
 
 ## Rules for the unattended session
@@ -163,3 +163,17 @@ has no LinkedIn access and will not acquire any. The operator reviews and posts.
   refused with the ffmpeg command that fixes them rather than resampled, because a
   resampler in the capture path is a quality decision that belongs to the OS audio server.
   Docs updated with the replay flags. Article 4 drafted.
+- `2026-11-13` — WP4 done. Console is static HTML, CSS and JavaScript with no build step,
+  served by the core from the same port as the WebSocket endpoints. The view model lives in
+  `console/state.js`, pure and DOM-free, so the behaviour that is easy to get wrong is
+  testable on its own: a partial replaced rather than appended, a final clearing only its
+  own lane, a delta for a superseded hint discarded, a cancelled hint removed rather than
+  greyed out. 167 tests pass, 19 of them driving a real Chromium.
+  Two things found while writing the tests: a `file://` page cannot dynamically import a
+  module, so the view-model tests load the page from the running core like a browser really
+  does; and a JavaScript module served with the wrong content type fails as a blank page
+  rather than an error, so there is now a test asserting the content type. Design decisions
+  recorded in the article: largest type goes to the hint because it is the only thing read
+  without turning one's head, the transcript is deliberately quieter because its job is to
+  prove the system is keeping up, and provisional text is shown dimmed rather than hidden
+  because a two-second blank looks identical to a crash. Article 5 drafted.

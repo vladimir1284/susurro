@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Susurro console</title>
+<link rel="stylesheet" href="console.css">
+</head>
+<body>
+<header>
+  <h1>Susurro</h1>
+  <span class="pill" id="session-pill" data-session="idle">idle</span>
+  <span class="pill" id="lane-mic" data-up="false">mic</span>
+  <span class="pill" id="lane-far" data-up="false">far</span>
+  <span class="spacer"></span>
+  <button id="start" type="button">Start</button>
+  <button id="hint-button" type="button" disabled>Hint</button>
+  <button id="stop" type="button" disabled>Stop</button>
+</header>
+
+<main id="transcript" aria-live="polite" aria-label="Transcript"></main>
+
+<section id="hint-panel" aria-live="assertive" aria-label="Current hint">
+  <pre id="hint-body"></pre>
+  <div id="hint-meta"></div>
+</section>
+
+<div id="errors" role="status"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

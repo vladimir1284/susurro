@@ -80,7 +80,20 @@ the tests use.
 
 ## Opening the console
 
-`http://mac-mini.local:8723/?token=…` from the phone or second screen.
+`http://mac-mini.local:8723/?token=…` from the phone or second screen. The core serves the
+console from the same port as the WebSocket endpoints, so there is one address to remember.
+
+Query parameters select the session:
+
+| Parameter | Meaning |
+|---|---|
+| `token` | The core's shared token. Required. |
+| `profile` | Profile id to configure on **Start**. |
+| `language` | `en` or `es`. Must match the profile. |
+| `mode` | `conversational`, `technical` or `business`. |
+
+**Space** requests a hint — the largest target on any keyboard, and the one you can hit
+without looking down.
 
 ## Contributing
 

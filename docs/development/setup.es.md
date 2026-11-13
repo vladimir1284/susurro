@@ -83,7 +83,21 @@ acepte, que es lo que usan los tests.
 
 ## Abrir la consola
 
-`http://mac-mini.local:8723/?token=…` desde el teléfono o la segunda pantalla.
+`http://mac-mini.local:8723/?token=…` desde el teléfono o la segunda pantalla. El núcleo
+sirve la consola desde el mismo puerto que los extremos WebSocket, así que hay una sola
+dirección que recordar.
+
+Los parámetros de consulta seleccionan la sesión:
+
+| Parámetro | Significado |
+|---|---|
+| `token` | Token compartido del núcleo. Obligatorio. |
+| `profile` | Identificador de perfil a configurar al pulsar **Start**. |
+| `language` | `en` o `es`. Debe coincidir con el perfil. |
+| `mode` | `conversational`, `technical` o `business`. |
+
+**Espacio** pide una sugerencia: es la tecla más grande de cualquier teclado y la única que
+puedes acertar sin mirar hacia abajo.
 
 ## Contribuir
 
