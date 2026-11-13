@@ -44,13 +44,30 @@ list and talks to a WebSocket; a framework would add a toolchain and solve nothi
 ```bash
 cd susurro
 python3 -m venv .venv
-.venv/bin/pip install -e ".[core]"
-.venv/bin/python -m core.server --config core.toml
+.venv/bin/pip install -e ".[core,whisper,openai]"
+cp core.toml.example core.toml   # then edit it
+.venv/bin/python -m core.main --config core.toml
 ```
 
-Configuration covers bind address, shared token, model paths and runtime selection. The
-core refuses to bind `0.0.0.0` without an explicit override, because an inference server
-with a shared-secret query parameter is not something to expose by accident.
+It prints the console URL, token included, and the profiles it found.
+
+The core refuses to bind `0.0.0.0` without `--allow-public-bind`. It authenticates with a
+shared token in a query parameter, which is enough for a trusted LAN and not enough for
+anything else.
+
+### Backends
+
+Both are selected by configuration rather than by import, which is what lets the same
+server run against fakes on a machine with no models and against real ones where they
+exist.
+
+| Setting | Values | Notes |
+|---|---|---|
+| `[stt] backend` | `fake`, `whisper` | `fake` replays a script and needs no model. |
+| `[llm] backend` | `fake`, `openai` | `openai` means any OpenAI-compatible server — `llama.cpp`, Ollama, vLLM, LM Studio. |
+
+Install only what you use: `.[core]` alone gives you the fakes, which is enough to work on
+the console, the protocol or the capture client.
 
 ## Running the capture client
 

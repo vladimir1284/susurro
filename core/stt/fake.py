@@ -56,8 +56,8 @@ class ScriptedRecognizer:
             index += 1
         return None
 
-    def feed(self, lane: Lane, timestamp_us: int, payload: bytes) -> list[Segment]:
-        del timestamp_us, payload  # the script does not care what was said
+    def feed(self, lane: Lane, timestamp_us: int, pcm: bytes) -> list[Segment]:
+        del timestamp_us, pcm  # the script does not care what was said
         utterance = self._pending(lane)
         if utterance is None:
             return []

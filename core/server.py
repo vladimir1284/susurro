@@ -26,6 +26,7 @@ from websockets.datastructures import Headers
 from websockets.http11 import Response
 
 from core import protocol as p
+from core.audio import DecodeError, LaneDecoder
 from core.llm.base import HintContext, HintGenerator
 from core.session.profiles import ProfileError, ProfileStore
 from core.session.state import SessionPhase, SessionState, TransitionError
@@ -60,6 +61,7 @@ class Core:
     token: str
 
     state: SessionState = field(default_factory=SessionState)
+    decoder: LaneDecoder = field(default_factory=LaneDecoder, init=False)
     consoles: set[ServerConnection] = field(default_factory=set, init=False)
     transcript: list[str] = field(default_factory=list, init=False)
     _hint_task: asyncio.Task[None] | None = field(default=None, init=False)
@@ -138,9 +140,13 @@ class Core:
                     # buffered: there is no prefilled cache to transcribe into
                     # yet, and a buffer would only delay the discovery.
                     continue
-                for segment in self.recognizer.feed(
-                    lane, frame.timestamp_us, frame.payload
-                ):
+                try:
+                    pcm = self.decoder.decode(lane, frame.payload)
+                except DecodeError as exc:
+                    # One corrupt packet is not worth dropping the lane for.
+                    await connection.send(p.error(exc.code, str(exc)))
+                    continue
+                for segment in self.recognizer.feed(lane, frame.timestamp_us, pcm):
                     await self.emit_segment(segment)
         except websockets.exceptions.ConnectionClosed:
             pass
@@ -226,6 +232,7 @@ class Core:
         self.state.start()
         self.transcript.clear()
         self.recognizer.reset()
+        self.decoder.reset()
         # Once per session, not once per hint. This is the whole latency
         # argument in one line.
         await self.generator.prefill(profile.preamble())

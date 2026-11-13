@@ -22,6 +22,7 @@ import pytest
 import websockets
 from websockets.asyncio.server import ServerConnection, serve
 
+from capture.codec import FRAME_SAMPLES, OpusEncoder
 from core import protocol as p
 from core.llm.fake import CannedHintGenerator
 from core.server import Core
@@ -30,6 +31,17 @@ from core.stt.fake import ScriptedRecognizer, ScriptedUtterance
 
 FIXTURES = Path(__file__).parent / "fixtures" / "profiles"
 TOKEN = "test-token"
+
+def opus_frame(encoder: OpusEncoder, n: int) -> bytes:
+    """A real Opus packet. The server decodes before recognizing, so a frame of
+    arbitrary bytes would be testing the decoder's tolerance rather than the
+    path under test."""
+    pcm = b"".join(
+        int(3000 * ((i + n) % 32 - 16) / 16).to_bytes(2, "little", signed=True)
+        for i in range(FRAME_SAMPLES)
+    )
+    return p.AudioFrame(timestamp_us=n * 20_000, payload=encoder.encode(pcm)).encode()
+
 
 SCRIPT = [
     ScriptedUtterance(lane="far", text="So tell me about a hard migration.", frames=4),
@@ -264,7 +276,7 @@ class TestCapture:
             await recv_json(capture)
             await capture.send(b"\x00" * 4)  # shorter than a timestamp
             assert (await recv_json(capture))["code"] == "malformed_frame"
-            await capture.send(p.AudioFrame(timestamp_us=1, payload=b"x").encode())
+            await capture.send(opus_frame(OpusEncoder(), 1))
 
     async def test_frames_before_session_start_are_dropped(
         self, url: str, core: Core
@@ -274,13 +286,9 @@ class TestCapture:
                 p.Hello(session_id="s", lane="far", client="test/0.1").to_json()
             )
             await recv_json(capture)
+            encoder = OpusEncoder()
             for i in range(10):
-                await capture.send(
-                    p.AudioFrame(timestamp_us=i * 20_000, payload=b"x").encode()
-                )
-            await capture.send(
-                p.AudioFrame(timestamp_us=999, payload=b"x").encode()
-            )
+                await capture.send(opus_frame(encoder, i))
         assert core.transcript == []
 
 
@@ -296,10 +304,9 @@ class TestTranscriptFlow:
             )
             await recv_json(capture)
             await drain(console, "state")
+            encoder = OpusEncoder()
             for i in range(4):
-                await capture.send(
-                    p.AudioFrame(timestamp_us=i * 20_000, payload=b"x").encode()
-                )
+                await capture.send(opus_frame(encoder, i))
             partial = await drain(console, "transcript.partial")
             final = await drain(console, "transcript.final")
 

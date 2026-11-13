@@ -45,14 +45,30 @@ resolvería nada.
 ```bash
 cd susurro
 python3 -m venv .venv
-.venv/bin/pip install -e ".[core]"
-.venv/bin/python -m core.server --config core.toml
+.venv/bin/pip install -e ".[core,whisper,openai]"
+cp core.toml.example core.toml   # y edítalo
+.venv/bin/python -m core.main --config core.toml
 ```
 
-La configuración cubre dirección de escucha, token compartido, rutas de modelos y
-selección de runtime. El núcleo se niega a escuchar en `0.0.0.0` sin una anulación
-explícita, porque un servidor de inferencia con un secreto compartido en un parámetro de
-consulta no es algo que se exponga por accidente.
+Imprime la URL de la consola, token incluido, y los perfiles que encontró.
+
+El núcleo se niega a escuchar en `0.0.0.0` sin `--allow-public-bind`. Se autentica con un
+token compartido en un parámetro de consulta, que alcanza para una LAN de confianza y no
+alcanza para nada más.
+
+### Backends
+
+Ambos se seleccionan por configuración y no por importación, que es lo que permite que el
+mismo servidor corra contra fakes en una máquina sin modelos y contra los reales donde los
+haya.
+
+| Ajuste | Valores | Notas |
+|---|---|---|
+| `[stt] backend` | `fake`, `whisper` | `fake` reproduce un guion y no necesita modelo. |
+| `[llm] backend` | `fake`, `openai` | `openai` es cualquier servidor compatible con OpenAI: `llama.cpp`, Ollama, vLLM, LM Studio. |
+
+Instala solo lo que uses: `.[core]` a secas te da los fakes, que bastan para trabajar en la
+consola, el protocolo o el cliente de captura.
 
 ## Ejecutar el cliente de captura
 

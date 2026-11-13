@@ -1,0 +1,25 @@
+# Susurro core configuration. Copy to core.toml and edit.
+
+[server]
+host = "127.0.0.1"
+port = 8723
+# Shared token for both WebSocket endpoints and the console URL.
+# Generate one with: python -c "import secrets; print(secrets.token_urlsafe(16))"
+token = ""
+profiles = "profiles"
+
+[stt]
+# "fake" needs no model and replays a script. "whisper" uses faster-whisper.
+backend = "whisper"
+language = "en"
+# Leave unset to take the per-language default from core/stt/whisper.py.
+# model = "small.en"
+compute_type = "int8"
+
+[llm]
+# "fake" returns canned text. "openai" talks to any OpenAI-compatible server:
+# llama.cpp's server, Ollama, vLLM, LM Studio.
+backend = "openai"
+base_url = "http://127.0.0.1:8080"
+model = "local"
+temperature = 0.3

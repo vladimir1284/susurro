@@ -66,7 +66,7 @@ LinkedIn draft if there is a lesson worth writing down.
       Static HTML/CSS/JS. Two transcript lanes, partial vs final rendering, hint area,
       controls. Playwright test against the core running fake backends.
 
-- [ ] **WP5 — End-to-end with real toy models** *(stretch)*
+- [x] **WP5 — Real backends** *(was: end-to-end with toy models)*
       `faster-whisper` tiny and a sub-1B GGUF on CPU. Proves the spine end to end.
       Any timing produced here is meaningless for M0 and must be labelled as such.
 
@@ -85,7 +85,7 @@ has no LinkedIn access and will not acquire any. The operator reviews and posts.
 3. Prompt caching, explained without jargon — drafted
 4. Building a system you cannot run (fakes, honest labels, measuring your own code) — drafted
 5. Designing a UI you read while keeping eye contact — drafted
-6. What building against a 16 GB ceiling forces you to decide
+6. The interface decides whether the feature is fast (prefill/stream, decode placement) — drafted
 
 ## Rules for the unattended session
 
@@ -177,3 +177,19 @@ has no LinkedIn access and will not acquire any. The operator reviews and posts.
   without turning one's head, the transcript is deliberately quieter because its job is to
   prove the system is keeping up, and provisional text is shown dimmed rather than hidden
   because a two-second blank looks identical to a crash. Article 5 drafted.
+- `2026-11-13` — WP5 done, with a deliberate change of shape. The package said "end-to-end
+  with real toy models on CPU". Running a toy LLM here would have produced a demo whose
+  only honest conclusion is "a 0.5B model on two ARM cores is slow", which nobody needs.
+  What was built instead is the **real** backends, tested without needing the models to be
+  fast: `core/llm/openai_compat.py` (any OpenAI-compatible server — llama.cpp, Ollama,
+  vLLM, LM Studio) tested against a mock transport, and `core/stt/whisper.py`
+  (faster-whisper) whose windowing logic is tested against a stubbed model. The real
+  whisper model *was* run once as an opt-in smoke test (`SUSURRO_SLOW_TESTS=1`), which
+  loads and transcribes in about 14 seconds here — a number that says the wiring works and
+  nothing at all about the target hardware.
+  Also refactored: Opus decoding moved out of the recognizers and into the server, since
+  every recognizer wants PCM and none wants a wire format. One decoder per lane, because
+  Opus carries predictor state and sharing one would corrupt both streams. And
+  `core/main.py` plus `core.toml.example` make the core actually runnable, with backends
+  chosen by configuration rather than by import, and a refusal to bind `0.0.0.0` without
+  `--allow-public-bind`. 226 tests pass, 1 skipped by design. Article 6 drafted.

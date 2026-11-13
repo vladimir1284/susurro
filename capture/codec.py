@@ -1,5 +1,7 @@
 """Opus encoding for one lane.
 
+Decoding lives in ``core.audio``: the capture client never decodes.
+
 The capture client is deliberately the dumbest process in the system: it reads
 audio, encodes it, and sends it. No voice activity detection, no buffering
 policy, no model. That is what keeps a new client platform a few hundred lines
@@ -55,14 +57,3 @@ class OpusEncoder:
                 f"got {len(pcm)}"
             )
         return self._encoder.encode(pcm, FRAME_SAMPLES)
-
-
-@dataclass
-class OpusDecoder:
-    """Only the tests and the core need this; the capture client never decodes."""
-
-    def __post_init__(self) -> None:
-        self._decoder = opuslib.Decoder(SAMPLE_RATE, CHANNELS)
-
-    def decode(self, packet: bytes) -> bytes:
-        return self._decoder.decode(packet, FRAME_SAMPLES)

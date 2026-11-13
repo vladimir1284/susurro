@@ -331,9 +331,15 @@ class TestConsolePage:
         ) as capture:
             capture.send(p.Hello(session_id="s", lane="far", client="t/0.1").to_json())
             capture.recv()
+            from capture.codec import FRAME_BYTES, OpusEncoder
+
+            encoder = OpusEncoder()
             for i in range(4):
+                pcm = bytes(FRAME_BYTES)
                 capture.send(
-                    p.AudioFrame(timestamp_us=i * 20_000, payload=b"x" * 20).encode()
+                    p.AudioFrame(
+                        timestamp_us=i * 20_000, payload=encoder.encode(pcm)
+                    ).encode()
                 )
             row = page.locator('.utterance[data-lane="far"]')
             expect(row.first).to_contain_text("Tell me about a hard migration.")

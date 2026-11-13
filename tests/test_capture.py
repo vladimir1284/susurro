@@ -21,13 +21,8 @@ from websockets.asyncio.server import ServerConnection, serve
 from capture.backends.base import SourceError
 from capture.backends.file import WavSource, write_wav
 from capture.client import CaptureError, stream_lane, stream_session
-from capture.codec import (
-    FRAME_BYTES,
-    FRAME_SAMPLES,
-    CodecError,
-    OpusDecoder,
-    OpusEncoder,
-)
+from capture.codec import FRAME_BYTES, FRAME_SAMPLES, CodecError, OpusEncoder
+from core.audio import LaneDecoder
 from core import protocol as p
 from core.llm.fake import CannedHintGenerator
 from core.server import Core
@@ -54,10 +49,10 @@ def wav(tmp_path: Path) -> Path:
 
 class TestCodec:
     def test_round_trip_preserves_frame_length(self) -> None:
-        encoder, decoder = OpusEncoder(), OpusDecoder()
+        encoder, decoder = OpusEncoder(), LaneDecoder()
         packet = encoder.encode(tone(1))
         assert 0 < len(packet) < p.MAX_PAYLOAD_BYTES
-        assert len(decoder.decode(packet)) == FRAME_BYTES
+        assert len(decoder.decode("mic", packet)) == FRAME_BYTES
 
     def test_encoded_frames_fit_the_protocol_payload_cap(self) -> None:
         encoder = OpusEncoder()

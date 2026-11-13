@@ -1,8 +1,12 @@
 """Recognizer interface.
 
-A recognizer is fed 20 ms frames for one lane and emits segments. It owns no
-sockets and no session state; the server routes frames to it and forwards what
-comes back.
+A recognizer is fed 20 ms frames of **decoded 16-bit mono PCM** for one lane and
+emits segments. It owns no sockets and no session state; the server decodes,
+routes frames to it, and forwards what comes back.
+
+Decoding deliberately happens in the server rather than here: every recognizer
+wants PCM and none wants an Opus packet, so a new speech backend never has to
+think about the wire format.
 
 Two kinds of output, and the distinction matters beyond rendering:
 
@@ -42,8 +46,8 @@ class Recognizer(Protocol):
     @property
     def language(self) -> Language: ...
 
-    def feed(self, lane: Lane, timestamp_us: int, payload: bytes) -> list[Segment]:
-        """Accept one frame, return whatever segments it completed.
+    def feed(self, lane: Lane, timestamp_us: int, pcm: bytes) -> list[Segment]:
+        """Accept one 20 ms PCM frame, return whatever segments it completed.
 
         Returning a list rather than yielding keeps the caller synchronous and
         makes "this frame produced nothing" the common, cheap case.
