@@ -119,3 +119,13 @@ has no LinkedIn access and will not acquire any. The operator reviews and posts.
   `docs/architecture/protocol.md`, both languages. Consequence recorded: Parakeet becomes
   the English fast path rather than a footnote, and M0 must measure both recognizers as
   first-class options. Article 1 drafted.
+- `2026-11-13` — Profile fixtures added in `tests/fixtures/profiles/`: one English
+  technical screen, one Spanish business meeting, so both recognizer-selection paths are
+  covered. The committed fixtures are synthetic. The operator offered a real public
+  profile page as test material, and the first attempt to commit it was correctly blocked:
+  a public test fixture is not the place for a real person's employment history, whatever
+  its original publication status. Real profiles belong in `tests/fixtures/profiles/local/`,
+  which is gitignored. First check of the context-budget claim: the synthetic profiles
+  carry roughly 750 and 530 tokens of static context by a chars/4 estimate, well inside
+  the 2-3k assumed in `docs/architecture/inference.md`, which supports skipping retrieval
+  in v1. The estimate understates Spanish and no real tokenizer has been run.

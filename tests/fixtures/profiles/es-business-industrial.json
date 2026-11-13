@@ -1,0 +1,11 @@
+{
+  "id": "es-business-industrial",
+  "label": "Reunión de cliente — automatización industrial (español)",
+  "language": "es",
+  "mode": "business",
+  "context": {
+    "resume": "Dana Okonkwo — ingeniera de software, quince años entre sistemas embebidos y servicios de backend. Responsable de ingeniería en Meridian Controls desde 2022: telemetría industrial para plantas de procesamiento de alimentos. Decide la tecnología de punta a punta, del firmware a la nube. Firmware para medición de caudal, registro de temperatura y pesaje con celdas de carga sobre ESP32 y STM32. Construyó el servicio de ingesta que recoge datos de unos cuatrocientos equipos en campo. C, Python, Modbus TCP, MQTT, Docker, PostgreSQL, TimescaleDB.\n\nAntes: ingeniera de backend y luego líder técnica en Arbor Systems entre 2018 y 2022, plataforma SaaS multiinquilino para alquiler de equipos, equipos de tres a seis personas. Desarrolladora en Northfield Instruments entre 2014 y 2018, adquisición y visualización de datos para estaciones de monitoreo ambiental; el visor web que escribió sigue en producción nueve años después. Profesora adjunta de sistemas embebidos en el politécnico estatal desde 2016, con docencia en control en tiempo real, programación de PLC y diseño en FPGA con VHDL.\n\nProyecto abierto: Lantern, cadena de herramientas neutral respecto al fabricante para datos de sensores industriales, desde los analizadores de formato binario hasta el visor en navegador.",
+    "role": "Reunión con un cliente industrial que evalúa automatizar una línea de envasado. Tienen PLC de dos fabricantes distintos conviviendo, sin telemetría centralizada, y un turno de noche sin personal técnico. Quieren saber qué se puede instrumentar sin parar la línea, qué datos podrían ver en remoto y cuánto tardaría una primera fase. Presupuesto no declarado. Asiste el jefe de planta, que es quien decide, y un ingeniero de mantenimiento escéptico con lo inalámbrico.",
+    "notes": "Primera reunión, no cerrar alcance. Objetivo: salir con una visita técnica agendada. El jefe de planta ya fue quemado por un integrador que prometió llave en mano y dejó la línea parada dos días, así que conviene hablar de fases reversibles y de qué pasa si se cae el enlace. Modbus TCP sobre cable es el argumento para el ingeniero de mantenimiento. No prometer plazos sin ver la planta."
+  }
+}

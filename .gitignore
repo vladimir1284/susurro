@@ -26,3 +26,6 @@ bench/results/*.json
 
 # OS
 .DS_Store
+
+# Real personal profiles used as a local test bank. Never committed.
+tests/fixtures/profiles/local/
