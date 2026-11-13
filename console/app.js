@@ -21,7 +21,24 @@ const el = {
   start: document.getElementById("start"),
   hint: document.getElementById("hint-button"),
   stop: document.getElementById("stop"),
+  edit: document.getElementById("edit"),
+  editor: document.getElementById("editor"),
+  editorLabel: document.getElementById("editor-label"),
+  editorLanguage: document.getElementById("editor-language"),
+  editorMode: document.getElementById("editor-mode"),
+  editorResume: document.getElementById("editor-resume"),
+  editorRole: document.getElementById("editor-role"),
+  editorNotes: document.getElementById("editor-notes"),
+  editorSave: document.getElementById("editor-save"),
+  editorClose: document.getElementById("editor-close"),
+  editorStatus: document.getElementById("editor-status"),
 };
+
+// The editor is opened by the user, not by the arrival of a profile: a
+// `profile` event also answers a refresh, and popping the panel open under
+// someone mid-call would be hostile.
+let editorOpen = false;
+let loadedProfile = null;
 
 let state = initial();
 let socket = null;
@@ -34,7 +51,16 @@ function connect() {
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   socket = new WebSocket(`${scheme}://${location.host}/console?token=${TOKEN}`);
   socket.addEventListener("message", (event) => {
-    state = apply(state, JSON.parse(event.data));
+    const message = JSON.parse(event.data);
+    state = apply(state, message);
+    // A fresh listing right after a save is the acknowledgement: the core
+    // sends one to the saving console before broadcasting it.
+    if (message.type === "profiles" && el.editorStatus.textContent === "saving…") {
+      setStatus("saved", "saved");
+    }
+    if (message.type === "error" && el.editorStatus.textContent === "saving…") {
+      setStatus(message.detail, "error");
+    }
     render();
   });
   socket.addEventListener("close", () => {
@@ -53,10 +79,12 @@ function render() {
   }
 
   renderProfiles();
+  renderEditor();
   renderTranscript();
   renderHint();
 
   el.profile.disabled = isLive(state) || state.profiles.length === 0;
+  el.edit.disabled = !selectedProfile();
   el.start.disabled = isLive(state) || !selectedProfile();
   el.stop.disabled = !isLive(state);
   el.hint.disabled = !isLive(state);
@@ -75,7 +103,12 @@ function render() {
 let renderedProfiles = "";
 
 function renderProfiles() {
-  const signature = state.profiles.map((p) => p.id).join("\u0000");
+  // Everything the option renders goes into the signature, not just the id:
+  // renaming a profile has to redraw it, and an id-only signature said
+  // nothing had changed.
+  const signature = state.profiles
+    .map((p) => [p.id, p.label, p.language, p.mode].join("\u001f"))
+    .join("\u0000");
   if (signature === renderedProfiles) return;
   renderedProfiles = signature;
 
@@ -95,6 +128,28 @@ function renderProfiles() {
 
 function selectedProfile() {
   return state.profiles.find((p) => p.id === el.profile.value) ?? null;
+}
+
+function renderEditor() {
+  el.editor.hidden = !editorOpen;
+  if (!editorOpen || !state.editing || state.editing === loadedProfile) return;
+
+  // Fill the fields once per loaded profile. Rewriting them on every event
+  // would move the caret while someone is typing.
+  loadedProfile = state.editing;
+  el.editorLabel.value = state.editing.label ?? "";
+  el.editorLanguage.value = state.editing.language ?? "en";
+  el.editorMode.value = state.editing.mode ?? "conversational";
+  const context = state.editing.context ?? {};
+  el.editorResume.value = context.resume ?? "";
+  el.editorRole.value = context.role ?? "";
+  el.editorNotes.value = context.notes ?? "";
+  setStatus("", "");
+}
+
+function setStatus(text, kind) {
+  el.editorStatus.textContent = text;
+  el.editorStatus.dataset.state = kind;
 }
 
 function renderTranscript() {
@@ -159,6 +214,37 @@ el.start.addEventListener("click", () => {
   send({ type: "session.start" });
 });
 el.stop.addEventListener("click", () => send({ type: "session.stop" }));
+
+el.edit.addEventListener("click", () => {
+  const profile = selectedProfile();
+  if (!profile) return;
+  editorOpen = true;
+  loadedProfile = null;
+  send({ type: "profile.request", profile_id: profile.id });
+  render();
+});
+
+el.editorClose.addEventListener("click", () => {
+  editorOpen = false;
+  render();
+});
+
+el.editorSave.addEventListener("click", () => {
+  if (!state.editing) return;
+  setStatus("saving…", "");
+  send({
+    type: "profile.save",
+    profile_id: state.editing.id,
+    label: el.editorLabel.value,
+    language: el.editorLanguage.value,
+    mode: el.editorMode.value,
+    context: {
+      resume: el.editorResume.value,
+      role: el.editorRole.value,
+      notes: el.editorNotes.value,
+    },
+  });
+});
 el.hint.addEventListener("click", () => send({ type: "hint.request", mode: hintMode() }));
 
 function hintMode() {

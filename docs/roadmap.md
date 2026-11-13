@@ -113,13 +113,15 @@ because the final for it has not been emitted yet.
 Profiles: résumé, job description or meeting agenda, notes. Preset modes — conversational,
 technical, business meeting.
 
-**Partly built.** Profiles load from disk, the console lists them and picks one, and the
+**Built.** Profiles load from disk, the console lists them, picks one, and edits one. The
 chosen profile decides the language and the default hint style. The picker locks while a
-session is live, because changing it would invalidate the prefilled cache — the core
-refuses that, and disabling the control is friendlier than explaining the refusal.
+session is live, because changing it would invalidate the prefilled cache.
 
-Still missing: **editing** a profile from the console. Today a profile is a JSON file you
-edit by hand.
+Saving is refused for the profile a live session was built from, for the same reason, and
+the editor says so instead of failing quietly. Writes are atomic: a crash mid-save leaves
+the previous profile intact rather than a half-written one.
+
+Profiles remain plain JSON files. The editor is a convenience, not a format.
 
 !!! success "Gate"
     Hints reference your actual background. A profile switch takes effect with one

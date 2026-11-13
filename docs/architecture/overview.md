@@ -61,6 +61,10 @@ All three processes are expected to be on the same LAN, or on the same
 enough for a trusted home network; it is not a substitute for real authentication, and
 the core should not be exposed to the public internet.
 
+That matters more than it used to. The console can **write** profiles, so the token is a
+write credential, not just a read one: whoever holds it can create and overwrite the
+context a session is built from.
+
 LAN round-trip is on the order of a millisecond and Opus at 16 kHz mono costs roughly
 24 kbit/s per lane, so the transport contributes nothing meaningful to the latency budget.
 That is the entire point of the design: the expensive link in a hosted copilot is the one

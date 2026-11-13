@@ -502,3 +502,85 @@ class TestProfilePicker:
         page.goto(f"{url}/?token={TOKEN}&profile=es-business-industrial")
         expect(page.locator("#start")).to_be_enabled()
         expect(page.locator("#profile")).to_have_value("es-business-industrial")
+
+
+class TestProfileEditor:
+    @pytest.fixture
+    def writable_console(self, tmp_path: Path) -> Iterator[tuple[str, Core]]:
+        import shutil
+
+        directory = tmp_path / "profiles"
+        directory.mkdir()
+        for name in ("en-technical-backend.json", "es-business-industrial.json"):
+            shutil.copy(FIXTURES / name, directory)
+        core = _core(directory)
+        for url in _serve(core):
+            yield url, core
+
+    def open_editor(self, page: Page, url: str) -> None:
+        page.goto(f"{url}/?token={TOKEN}")
+        expect(page.locator("#start")).to_be_enabled()
+        page.locator("#edit").click()
+        expect(page.locator("#editor")).to_be_visible()
+
+    def test_the_editor_is_closed_until_asked_for(
+        self, page: Page, writable_console
+    ) -> None:
+        # The console's job is to be glanceable. A form is the opposite of
+        # that, so it stays out of the way until someone wants it.
+        url, _ = writable_console
+        page.goto(f"{url}/?token={TOKEN}")
+        expect(page.locator("#start")).to_be_enabled()
+        expect(page.locator("#editor")).to_be_hidden()
+
+    def test_it_opens_filled_with_the_selected_profile(
+        self, page: Page, writable_console
+    ) -> None:
+        url, _ = writable_console
+        self.open_editor(page, url)
+        expect(page.locator("#editor-label")).to_have_value("Senior backend / platform engineer — English technical screen")
+        expect(page.locator("#editor-language")).to_have_value("en")
+        expect(page.locator("#editor-resume")).not_to_have_value("")
+
+    def test_an_edit_is_saved_and_shows_in_the_picker(
+        self, page: Page, writable_console
+    ) -> None:
+        url, core = writable_console
+        self.open_editor(page, url)
+        page.fill("#editor-label", "Renamed from the console")
+        page.fill("#editor-notes", "remember the cutover story")
+        page.locator("#editor-save").click()
+
+        expect(page.locator("#editor-status")).to_have_text("saved")
+        expect(page.locator("#profile option").first).to_contain_text(
+            "Renamed from the console"
+        )
+        saved = core.profiles.load("en-technical-backend")
+        assert saved.context["notes"] == "remember the cutover story"
+
+    def test_the_live_profile_cannot_be_saved_and_says_why(
+        self, page: Page, writable_console
+    ) -> None:
+        url, _ = writable_console
+        self.open_editor(page, url)
+        page.locator("#editor-close").click()
+        page.locator("#start").click()
+        expect(page.locator("#session-pill")).to_have_text("live")
+
+        page.locator("#edit").click()
+        expect(page.locator("#editor")).to_be_visible()
+        page.fill("#editor-label", "Changed mid-call")
+        page.locator("#editor-save").click()
+
+        status = page.locator("#editor-status")
+        expect(status).to_have_attribute("data-state", "error")
+        expect(status).to_contain_text("prefilled")
+
+    def test_closing_the_editor_leaves_the_transcript_alone(
+        self, page: Page, writable_console
+    ) -> None:
+        url, _ = writable_console
+        self.open_editor(page, url)
+        page.locator("#editor-close").click()
+        expect(page.locator("#editor")).to_be_hidden()
+        expect(page.locator("#transcript")).to_be_visible()

@@ -75,6 +75,7 @@ JSON bidireccional. Sin tramas binarias.
 {"type":"hint.end","hint_id":"h-93","reason":"complete","tokens":38,"ttft_ms":780}
 {"type":"hint.end","hint_id":"h-93","reason":"cancelled"}
 {"type":"profiles","profiles":[{"id":"backend-role-acme","label":"Acme — backend senior","language":"es","mode":"conversational"}]}
+{"type":"profile","profile":{"id":"backend-role-acme","label":"Acme — backend senior","language":"es","mode":"conversational","context":{"resume":"…"}}}
 {"type":"state","session":"live","stt":"ready","llm":"ready","lanes":{"mic":"up","far":"up"}}
 {"type":"error","code":"lane_busy","detail":"lane 'mic' is already connected"}
 ```
@@ -92,7 +93,27 @@ lugar de mostrarla.
 {"type":"session.start"}
 {"type":"session.stop"}
 {"type":"profiles.request"}
+{"type":"profile.request","profile_id":"backend-role-acme"}
+{"type":"profile.save","profile_id":"backend-role-acme","label":"Acme — backend senior","language":"es","mode":"conversational","context":{"resume":"…","role":"…","notes":"…"}}
 ```
+
+`profiles` lleva solo etiquetas; `profile.request` trae uno completo, contexto incluido,
+para el editor. `profile.save` lo escribe, creando el perfil si el identificador es nuevo,
+y el núcleo responde con un listado fresco: primero a la consola que guardó y luego a todas
+las demás, porque dos pantallas es una configuración normal y un selector obsoleto es una
+trampa.
+
+Un guardado se rechaza para el perfil con el que se construyó una sesión **en vivo**. Su
+contexto ya está prefilleado en la caché del modelo, así que sobrescribirlo dejaría a la
+consola mostrando texto que el modelo nunca ha visto, sin nada que lo indique. Los demás
+perfiles se pueden editar a mitad de sesión.
+
+!!! warning "Esto convierte el token en credencial de escritura"
+    `profile.save` escribe ficheros en la máquina del núcleo. Quien alcance el puerto y
+    tenga el token puede crear y sobrescribir perfiles. Los identificadores de perfil se
+    rechazan si pudieran direccionar algo fuera del directorio de perfiles —comprobado aquí
+    y en el almacén de perfiles— pero eso es contención, no autenticación. Ver
+    [Visión general](overview.md#supuestos-de-red).
 
 A una consola se la saluda con `profiles` antes que con `state`, para que pueda ofrecer una
 elección en lugar de exigir que el identificador se sepa de antemano. `profiles.request`

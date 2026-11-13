@@ -459,3 +459,160 @@ class TestProfileListing:
         assert [entry["id"] for entry in listing["profiles"]] == [
             "en-technical-backend"
         ]
+
+
+class TestProfileEditing:
+    @pytest.fixture
+    def writable(self, tmp_path: Path, core: Core) -> Path:
+        import shutil
+
+        shutil.copy(FIXTURES / "en-technical-backend.json", tmp_path)
+        core.profiles = ProfileStore(tmp_path)
+        return tmp_path
+
+    async def test_a_profile_can_be_fetched_in_full(self, url: str) -> None:
+        console = await open_console(url)
+        await console.send(
+            json.dumps(
+                {"type": "profile.request", "profile_id": "en-technical-backend"}
+            )
+        )
+        event = await recv_json(console)
+        assert event["type"] == "profile"
+        # The listing carries labels only; the editor needs the context.
+        assert "resume" in event["profile"]["context"]
+        await console.close()
+
+    async def test_saving_writes_the_file_and_refreshes_the_listing(
+        self, url: str, core: Core, writable: Path
+    ) -> None:
+        console = await open_console(url)
+        await console.send(
+            json.dumps(
+                {
+                    "type": "profile.save",
+                    "profile_id": "en-technical-backend",
+                    "label": "Edited from the console",
+                    "language": "en",
+                    "mode": "technical",
+                    "context": {"resume": "rewritten"},
+                }
+            )
+        )
+        listing = await drain(console, "profiles")
+        assert listing["profiles"][0]["label"] == "Edited from the console"
+        assert core.profiles.load("en-technical-backend").context["resume"] == (
+            "rewritten"
+        )
+        await console.close()
+
+    async def test_saving_creates_a_new_profile(
+        self, url: str, core: Core, writable: Path
+    ) -> None:
+        console = await open_console(url)
+        await console.send(
+            json.dumps(
+                {
+                    "type": "profile.save",
+                    "profile_id": "brand-new",
+                    "label": "Brand new",
+                    "language": "es",
+                    "mode": "business",
+                    "context": {"role": "una reunión"},
+                }
+            )
+        )
+        listing = await drain(console, "profiles")
+        assert "brand-new" in {entry["id"] for entry in listing["profiles"]}
+        await console.close()
+
+    async def test_the_live_profile_cannot_be_overwritten(
+        self, url: str, core: Core, writable: Path
+    ) -> None:
+        # Its context is already prefilled into the model's cache. Saving over
+        # it would leave the console showing text the model has never seen,
+        # with nothing to indicate it.
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "technical")
+        await console.send(
+            json.dumps(
+                {
+                    "type": "profile.save",
+                    "profile_id": "en-technical-backend",
+                    "label": "Changed mid-session",
+                    "language": "en",
+                    "mode": "technical",
+                    "context": {"resume": "different"},
+                }
+            )
+        )
+        error = await recv_json(console)
+        assert error["code"] == "bad_transition"
+        assert "prefilled" in error["detail"]
+        assert core.profiles.load("en-technical-backend").label != "Changed mid-session"
+        await console.close()
+
+    async def test_another_profile_can_be_edited_while_live(
+        self, url: str, core: Core, writable: Path
+    ) -> None:
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "technical")
+        await console.send(
+            json.dumps(
+                {
+                    "type": "profile.save",
+                    "profile_id": "other",
+                    "label": "Prepared for later",
+                    "language": "en",
+                    "mode": "conversational",
+                    "context": {"notes": "for the next call"},
+                }
+            )
+        )
+        listing = await drain(console, "profiles")
+        assert "other" in {entry["id"] for entry in listing["profiles"]}
+        await console.close()
+
+    async def test_an_id_that_could_escape_the_directory_is_refused(
+        self, url: str, writable: Path
+    ) -> None:
+        console = await open_console(url)
+        await console.send(
+            json.dumps(
+                {
+                    "type": "profile.save",
+                    "profile_id": "../escaped",
+                    "label": "Nope",
+                    "language": "en",
+                    "mode": "technical",
+                    "context": {"resume": "x"},
+                }
+            )
+        )
+        error = await recv_json(console)
+        assert error["code"] == "malformed_message"
+        assert not (writable.parent / "escaped.json").exists()
+        await console.close()
+
+    async def test_a_save_reaches_other_consoles(
+        self, url: str, writable: Path
+    ) -> None:
+        # Two screens is a normal setup; one must not show a stale listing.
+        first = await open_console(url)
+        second = await open_console(url)
+        await first.send(
+            json.dumps(
+                {
+                    "type": "profile.save",
+                    "profile_id": "shared",
+                    "label": "Seen by both",
+                    "language": "en",
+                    "mode": "conversational",
+                    "context": {"notes": "x"},
+                }
+            )
+        )
+        listing = await drain(second, "profiles")
+        assert "shared" in {entry["id"] for entry in listing["profiles"]}
+        await first.close()
+        await second.close()

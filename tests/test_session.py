@@ -199,3 +199,84 @@ class TestSessionState:
         # The superseded hint can no longer close the session's active hint.
         assert state.end_hint(first) is False
         assert state.end_hint(second) is True
+
+
+class TestProfileSaving:
+    def profile(self, **overrides) -> Profile:
+        values = {
+            "id": "written",
+            "label": "A written profile",
+            "language": "en",
+            "mode": "technical",
+            "context": {"resume": "some background"},
+        }
+        values.update(overrides)
+        return Profile(**values)
+
+    def test_a_saved_profile_loads_back(self, tmp_path: Path) -> None:
+        store = ProfileStore(tmp_path)
+        store.save(self.profile())
+        assert store.load("written").label == "A written profile"
+
+    def test_saving_creates_the_directory(self, tmp_path: Path) -> None:
+        store = ProfileStore(tmp_path / "new" / "place")
+        store.save(self.profile())
+        assert store.list_ids() == ["written"]
+
+    def test_saving_replaces_an_existing_profile(self, tmp_path: Path) -> None:
+        store = ProfileStore(tmp_path)
+        store.save(self.profile())
+        store.save(self.profile(label="Renamed"))
+        assert store.load("written").label == "Renamed"
+        assert store.list_ids() == ["written"]
+
+    def test_an_invalid_profile_never_reaches_the_disk(self, tmp_path: Path) -> None:
+        # Round-tripped through validation before writing: a file that cannot
+        # be loaded back is worse than a refused save.
+        store = ProfileStore(tmp_path)
+        with pytest.raises(ProfileError):
+            store.save(self.profile(context={"resume": "   "}))
+        assert store.list_ids() == []
+
+    @pytest.mark.parametrize("profile_id", ["../escape", "a/b", "", ".", ".."])
+    def test_an_id_that_could_escape_is_refused(
+        self, tmp_path: Path, profile_id: str
+    ) -> None:
+        store = ProfileStore(tmp_path)
+        with pytest.raises(ProfileError, match="invalid profile id"):
+            store.save(self.profile(id=profile_id))
+
+    def test_a_failed_write_leaves_no_rubbish(self, tmp_path: Path) -> None:
+        store = ProfileStore(tmp_path)
+        with pytest.raises(ProfileError):
+            store.save(self.profile(language="fr"))
+        assert list(tmp_path.iterdir()) == []
+
+    def test_unicode_survives_the_round_trip(self, tmp_path: Path) -> None:
+        store = ProfileStore(tmp_path)
+        store.save(self.profile(context={"resume": "Ingeniería eléctrica — Camagüey"}))
+        assert "Camagüey" in store.load("written").context["resume"]
+
+    def test_the_written_file_is_readable_by_a_person(self, tmp_path: Path) -> None:
+        # Profiles are meant to be editable by hand as well as by the console.
+        store = ProfileStore(tmp_path)
+        path = store.save(self.profile())
+        text = path.read_text(encoding="utf-8")
+        assert "\n" in text and text.endswith("\n")
+
+    def test_an_interrupted_write_does_not_destroy_the_previous_version(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        # The previous profile is the context a session is built from. Losing
+        # it to a crash mid-write would be a miserable way to start a call.
+        store = ProfileStore(tmp_path)
+        store.save(self.profile(label="Original"))
+
+        def explode(*args, **kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr("core.session.profiles.os.replace", explode)
+        with pytest.raises(OSError):
+            store.save(self.profile(label="Half written"))
+        assert store.load("written").label == "Original"
+        assert [p.name for p in tmp_path.iterdir()] == ["written.json"]

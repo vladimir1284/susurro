@@ -11,7 +11,10 @@ there is no scale problem: a user has a handful of profiles, not thousands.
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -64,6 +67,15 @@ class Profile:
                 parts.append(f"## {_SECTION_HEADINGS[section]}\n{body}")
         return "\n\n".join(parts)
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "label": self.label,
+            "language": self.language,
+            "mode": self.mode,
+            "context": dict(self.context),
+        }
+
     @classmethod
     def from_dict(cls, raw: Any, *, source: str = "<dict>") -> Profile:
         if not isinstance(raw, dict):
@@ -114,11 +126,7 @@ class ProfileStore:
         self.directory = Path(directory)
 
     def load(self, profile_id: str) -> Profile:
-        # Profile ids come from the console and index the filesystem, so a id
-        # containing a path separator must not be able to walk out of the
-        # directory.
-        if "/" in profile_id or "\\" in profile_id or profile_id in {"", ".", ".."}:
-            raise ProfileError(f"invalid profile id {profile_id!r}")
+        self._check_id(profile_id)
         path = self.directory / f"{profile_id}.json"
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
@@ -132,6 +140,50 @@ class ProfileStore:
                 f"{path}: declares id {profile.id!r} but is filed as {profile_id!r}"
             )
         return profile
+
+    def save(self, profile: Profile) -> Path:
+        """Write a profile, replacing any file already there.
+
+        Written to a temporary file in the same directory and renamed over the
+        target, so a crash or a full disk leaves the previous profile intact
+        rather than a half-written one. A profile is the context a whole
+        session is built from; losing it to an interrupted write would be a
+        miserable way to start a call.
+        """
+        self._check_id(profile.id)
+        # Round-trip through validation: a profile that cannot be loaded back
+        # must not reach the disk.
+        Profile.from_dict(profile.to_dict(), source="<save>")
+        self.directory.mkdir(parents=True, exist_ok=True)
+        path = self.directory / f"{profile.id}.json"
+        # Opened outside a context manager on purpose: the file has to survive
+        # being closed so it can be renamed over the target, and it has to be
+        # unlinked by hand if anything fails before that. It is still written
+        # inside a `with` below.
+        handle = tempfile.NamedTemporaryFile(  # noqa: SIM115
+            "w", encoding="utf-8", dir=self.directory, prefix=f".{profile.id}.",
+            suffix=".tmp", delete=False,
+        )
+        try:
+            with handle:
+                json.dump(profile.to_dict(), handle, indent=2, ensure_ascii=False)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(handle.name, path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(handle.name)
+            raise
+        return path
+
+    @staticmethod
+    def _check_id(profile_id: str) -> None:
+        # Profile ids come from the console and index the filesystem, so an id
+        # containing a path separator must not be able to walk out of the
+        # directory. This matters more now that ids also name files to write.
+        if "/" in profile_id or "\\" in profile_id or profile_id in {"", ".", ".."}:
+            raise ProfileError(f"invalid profile id {profile_id!r}")
 
     def list_ids(self) -> list[str]:
         if not self.directory.is_dir():

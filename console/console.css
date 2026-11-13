@@ -16,6 +16,11 @@
 
 * { box-sizing: border-box; }
 
+/* `display` in a rule beats the hidden attribute's own default, so anything
+   given a display here has to say this too. The editor is a flex column and
+   was visible with hidden set until this existed. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--bg);
@@ -100,6 +105,50 @@ select:disabled { opacity: 0.4; }
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+#editor {
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 60dvh;
+  overflow-y: auto;
+}
+
+#editor label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+#editor .row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+#editor input[type="text"],
+#editor textarea {
+  font: inherit;
+  font-size: 15px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #1b1f2b;
+  color: var(--text);
+  resize: vertical;
+}
+
+#editor input[type="text"] { max-width: 280px; }
+
+#editor-status { font-size: 13px; color: var(--muted); }
+#editor-status[data-state="saved"] { color: var(--them); }
+#editor-status[data-state="error"] { color: var(--error); }
 
 #transcript {
   flex: 1;

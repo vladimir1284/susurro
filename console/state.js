@@ -16,6 +16,10 @@ export const EMPTY = Object.freeze({
   // One open partial per lane, or null. Replaced on every recognizer pass.
   partials: { mic: null, far: null },
   hint: null,
+  // The profile open in the editor, or null when it is closed. Held
+  // separately from `profiles` because that list carries labels only.
+  editing: null,
+  saved: null,
   errors: [],
 });
 
@@ -40,6 +44,9 @@ export function apply(state, event) {
 
     case "profiles":
       return { ...state, profiles: event.profiles };
+
+    case "profile":
+      return { ...state, editing: event.profile, saved: null };
 
     case "transcript.partial":
       return {

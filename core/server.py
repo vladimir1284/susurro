@@ -28,7 +28,7 @@ from websockets.http11 import Response
 from core import protocol as p
 from core.audio import DecodeError, LaneDecoder
 from core.llm.base import HintContext, HintGenerator
-from core.session.profiles import ProfileError, ProfileStore
+from core.session.profiles import Profile, ProfileError, ProfileStore
 from core.session.state import SessionPhase, SessionState, TransitionError
 from core.stt.base import Recognizer, Segment
 from core.vad import Detector, VadEvent
@@ -238,6 +238,15 @@ class Core:
                 case p.ProfilesRequest():
                     await connection.send(self.profiles_event())
                     return
+                case p.ProfileRequest(profile_id=profile_id):
+                    profile = self.profiles.load(profile_id)
+                    await connection.send(p.profile(profile.to_dict()))
+                    return
+                case p.ProfileSave() as command:
+                    await self.save_profile(command)
+                    await connection.send(self.profiles_event())
+                    await self.broadcast(self.profiles_event())
+                    return
                 case p.SessionStart():
                     await self.start_session()
                 case p.SessionStop():
@@ -254,6 +263,35 @@ class Core:
             await connection.send(p.error(exc.code, str(exc)))
             return
         await self.broadcast(self.state_event())
+
+    async def save_profile(self, command: p.ProfileSave) -> None:
+        """Persist an edited profile.
+
+        Refused for the profile the live session was built from. Its preamble
+        is already prefilled into the model's cache; saving over it would leave
+        the console showing text the model has never seen, with no error and no
+        way to notice. Other profiles are fine to edit mid-session.
+        """
+        if (
+            self.state.phase is SessionPhase.LIVE
+            and command.profile_id == self.state.profile_id
+        ):
+            raise TransitionError(
+                f"profile {command.profile_id!r} is in use by the live session: its "
+                "context is already prefilled into the model. Stop the session first."
+            )
+        profile = Profile(
+            id=command.profile_id,
+            label=command.label,
+            language=command.language,
+            mode=command.mode,
+            context=command.context,
+        )
+        try:
+            self.profiles.save(profile)
+        except OSError as exc:
+            raise ProfileError(f"could not write profile: {exc}") from exc
+        log.info("saved profile %s", profile.id)
 
     async def start_session(self) -> None:
         if self.state.phase is SessionPhase.IDLE:

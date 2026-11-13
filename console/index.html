@@ -19,7 +19,37 @@
   <button id="start" type="button">Start</button>
   <button id="hint-button" type="button" disabled>Hint</button>
   <button id="stop" type="button" disabled>Stop</button>
+  <button id="edit" type="button" disabled>Edit</button>
 </header>
+
+<section id="editor" aria-label="Profile editor" hidden>
+  <div class="row">
+    <label for="editor-label">Label</label>
+    <input id="editor-label" type="text" autocomplete="off">
+    <label for="editor-language">Language</label>
+    <select id="editor-language">
+      <option value="en">en</option>
+      <option value="es">es</option>
+    </select>
+    <label for="editor-mode">Mode</label>
+    <select id="editor-mode">
+      <option value="conversational">conversational</option>
+      <option value="technical">technical</option>
+      <option value="business">business</option>
+    </select>
+  </div>
+  <label for="editor-resume">Background</label>
+  <textarea id="editor-resume" rows="6"></textarea>
+  <label for="editor-role">This session</label>
+  <textarea id="editor-role" rows="4"></textarea>
+  <label for="editor-notes">Notes</label>
+  <textarea id="editor-notes" rows="3"></textarea>
+  <div class="row">
+    <button id="editor-save" type="button">Save</button>
+    <button id="editor-close" type="button">Close</button>
+    <span id="editor-status"></span>
+  </div>
+</section>
 
 <main id="transcript" aria-live="polite" aria-label="Transcript"></main>
 

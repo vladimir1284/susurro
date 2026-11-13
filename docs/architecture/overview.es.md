@@ -62,6 +62,10 @@ Se espera que los tres procesos estén en la misma LAN, o en la misma tailnet de
 alcanza para una red doméstica de confianza; no sustituye a una autenticación real, y el
 núcleo no debe exponerse a internet.
 
+Eso importa más que antes. La consola puede **escribir** perfiles, así que el token es una
+credencial de escritura y no solo de lectura: quien lo tenga puede crear y sobrescribir el
+contexto con el que se construye una sesión.
+
 El viaje de ida y vuelta en LAN es del orden del milisegundo y Opus a 16 kHz mono cuesta
 unos 24 kbit/s por carril, así que el transporte no aporta nada relevante al presupuesto
 de latencia. Ese es justamente el objetivo del diseño: el enlace caro de un copiloto en la

@@ -76,6 +76,9 @@ LinkedIn draft if there is a lesson worth writing down.
 
 ### Added after WP9, once every queued package was done
 
+- [x] **WP12 — M5 complete: the console edits a profile**
+      Profiles were JSON files you edited by hand. The console now reads and writes them.
+
 - [x] **WP11 — M5 in part: the console picks a profile**
       The console required the profile id in the query string, which meant hand-editing a
       URL before a call. It now asks the core what exists.
@@ -350,3 +353,27 @@ machine with audio devices.
   tidy-up does. And the drift guard in `tests/test_docs_match_code.py` failed on the two new
   message types until they were documented, which is the guard doing exactly its job.
   334 tests pass.
+- `2026-11-13` — WP12 done, **M5 complete**. `profile.request` fetches one profile in full
+  and `profile.save` writes it, creating it when the id is new. The editor stays hidden
+  until asked for: the console's job is to be glanceable and a form is the opposite of
+  that.
+  Writes are atomic — temporary file in the same directory, fsync, rename over the target —
+  because a profile is the context a whole session is built from and losing it to an
+  interrupted write would be a miserable way to start a call. There is a test that
+  monkeypatches `os.replace` to fail and asserts the previous profile survives intact. The
+  profile is also round-tripped through validation before touching the disk: a file that
+  cannot be loaded back is worse than a refused save.
+  Saving the profile a **live** session was built from is refused. Its context is already
+  prefilled into the model's cache, so saving over it would leave the console showing text
+  the model has never seen, with nothing to indicate it. Other profiles can be edited
+  mid-session, and a save reaches every connected console, because two screens is a normal
+  setup and a stale picker is a trap.
+  **This makes the token a write credential**, which the architecture overview and the
+  protocol page now say in those words. Ids are rejected in two places if they could
+  address anything outside the profile directory — but that is containment, not
+  authentication.
+  Two bugs found by the browser tests, both invisible from reading the code. A CSS
+  `display: flex` silently beat the `hidden` attribute, so the editor was visible before
+  anyone opened it; `[hidden] { display: none !important }` now exists with a comment
+  saying why. And the picker's re-render guard keyed on profile ids alone, so renaming a
+  profile saved correctly and changed nothing on screen. 359 tests pass.

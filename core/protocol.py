@@ -324,6 +324,11 @@ def profiles(entries: list[dict[str, str]]) -> str:
     return json.dumps({"type": "profiles", "profiles": entries})
 
 
+def profile(entry: dict[str, Any]) -> str:
+    """One profile in full, including its context, for the editor."""
+    return json.dumps({"type": "profile", "profile": entry})
+
+
 def state(session: str, stt: str, llm: str, lanes: dict[str, str]) -> str:
     unknown = set(lanes) - LANES
     if unknown:
@@ -381,6 +386,29 @@ class ProfilesRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class ProfileRequest:
+    """Ask for one profile in full, context included."""
+
+    profile_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileSave:
+    """Write a profile. Creates it if the id is new.
+
+    The console is the only writer, and it is reachable by anyone holding the
+    token, so this is the message that turns the token from a read credential
+    into a write one. See the network note in the architecture overview.
+    """
+
+    profile_id: str
+    label: str
+    language: Language
+    mode: Mode
+    context: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
 class SessionStart:
     pass
 
@@ -397,7 +425,14 @@ ConsoleCommand = (
     | SessionStart
     | SessionStop
     | ProfilesRequest
+    | ProfileRequest
+    | ProfileSave
 )
+
+#: The sections a profile's context may carry. Mirrors
+#: ``core.session.profiles.CONTEXT_SECTIONS``; kept here so the protocol can
+#: reject an unknown section without importing the session layer.
+CONTEXT_SECTIONS: Final[frozenset[str]] = frozenset({"resume", "role", "notes"})
 
 _COMMAND_FIELDS: Final[dict[str, frozenset[str]]] = {
     "hint.request": frozenset({"type", "mode"}),
@@ -406,6 +441,10 @@ _COMMAND_FIELDS: Final[dict[str, frozenset[str]]] = {
     "session.start": frozenset({"type"}),
     "session.stop": frozenset({"type"}),
     "profiles.request": frozenset({"type"}),
+    "profile.request": frozenset({"type", "profile_id"}),
+    "profile.save": frozenset(
+        {"type", "profile_id", "label", "language", "mode", "context"}
+    ),
 }
 
 
@@ -440,4 +479,40 @@ def parse_console_command(raw: str | bytes) -> ConsoleCommand:
         return SessionStart()
     if kind == "profiles.request":
         return ProfilesRequest()
+    if kind == "profile.request":
+        return ProfileRequest(profile_id=_require_identifier(obj, "profile_id"))
+    if kind == "profile.save":
+        context = _require(obj, "context", dict)
+        unknown = set(context) - CONTEXT_SECTIONS
+        if unknown:
+            raise MalformedMessage(
+                f"unknown context section(s) {sorted(unknown)}; "
+                f"expected {sorted(CONTEXT_SECTIONS)}"
+            )
+        for key, value in context.items():
+            if not isinstance(value, str):
+                raise MalformedMessage(f"context.{key} must be a string")
+        label = _require(obj, "label", str)
+        if not label.strip():
+            raise MalformedMessage("label must not be blank")
+        return ProfileSave(
+            profile_id=_require_identifier(obj, "profile_id"),
+            label=label,
+            language=_require_choice(obj, "language", LANGUAGES),  # type: ignore[arg-type]
+            mode=_require_choice(obj, "mode", MODES),  # type: ignore[arg-type]
+            context=dict(context),
+        )
     return SessionStop()
+
+
+def _require_identifier(obj: dict[str, Any], key: str) -> str:
+    """A non-empty id that cannot address anything outside its directory.
+
+    Checked here as well as in the profile store. The store is the authority,
+    but a malformed id should be refused as a protocol error rather than
+    reaching the filesystem layer to be refused there.
+    """
+    value = _require(obj, key, str)
+    if not value or value in {".", ".."} or "/" in value or "\\" in value:
+        raise MalformedMessage(f"{key} is not a valid identifier: {value!r}")
+    return value

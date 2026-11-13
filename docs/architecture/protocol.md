@@ -73,6 +73,7 @@ Bidirectional JSON. No binary frames.
 {"type":"hint.end","hint_id":"h-93","reason":"complete","tokens":38,"ttft_ms":780}
 {"type":"hint.end","hint_id":"h-93","reason":"cancelled"}
 {"type":"profiles","profiles":[{"id":"backend-role-acme","label":"Acme — senior backend","language":"en","mode":"conversational"}]}
+{"type":"profile","profile":{"id":"backend-role-acme","label":"Acme — senior backend","language":"en","mode":"conversational","context":{"resume":"…"}}}
 {"type":"state","session":"live","stt":"ready","llm":"ready","lanes":{"mic":"up","far":"up"}}
 {"type":"error","code":"lane_busy","detail":"lane 'mic' is already connected"}
 ```
@@ -89,7 +90,26 @@ the other party interrupted. The console discards the partial hint rather than s
 {"type":"session.start"}
 {"type":"session.stop"}
 {"type":"profiles.request"}
+{"type":"profile.request","profile_id":"backend-role-acme"}
+{"type":"profile.save","profile_id":"backend-role-acme","label":"Acme — senior backend","language":"en","mode":"conversational","context":{"resume":"…","role":"…","notes":"…"}}
 ```
+
+`profiles` carries labels only; `profile.request` fetches one in full, context included,
+for the editor. `profile.save` writes it, creating the profile if the id is new, and the
+core answers with a fresh listing — to the saving console first, then to every other one,
+since two screens is a normal setup and a stale picker is a trap.
+
+A save is refused for the profile a **live** session was built from. Its context is
+already prefilled into the model's cache, so saving over it would leave the console
+showing text the model has never seen, with nothing to indicate it. Other profiles can be
+edited mid-session.
+
+!!! warning "This makes the token a write credential"
+    `profile.save` writes files on the core machine. Anyone who can reach the port and
+    holds the token can create and overwrite profiles. Profile ids are rejected if they
+    could address anything outside the profile directory — checked both here and in the
+    profile store — but that is containment, not authentication. See
+    [Overview](overview.md#network-assumptions).
 
 A console is greeted with `profiles` before `state`, so it can offer a choice rather than
 requiring the id to be known in advance. `profiles.request` asks for the listing again. A

@@ -118,13 +118,17 @@ su final todavía no se ha emitido.
 Perfiles: currículum, descripción del puesto o agenda de la reunión, notas. Modos
 predefinidos: conversacional, técnico, reunión de negocio.
 
-**Construido a medias.** Los perfiles se cargan de disco, la consola los lista y elige uno,
-y el perfil elegido decide el idioma y el estilo de sugerencia por defecto. El selector se
-bloquea mientras la sesión está en vivo, porque cambiarlo invalidaría la caché prefilleada
-—el núcleo lo rechaza, y desactivar el control es más amable que explicar el rechazo.
+**Construido.** Los perfiles se cargan de disco, y la consola los lista, elige uno y lo
+edita. El perfil elegido decide el idioma y el estilo de sugerencia por defecto. El
+selector se bloquea mientras la sesión está en vivo, porque cambiarlo invalidaría la caché
+prefilleada.
 
-Falta todavía: **editar** un perfil desde la consola. Hoy un perfil es un fichero JSON que
-se edita a mano.
+Guardar se rechaza para el perfil con el que se construyó una sesión en vivo, por la misma
+razón, y el editor lo dice en vez de fallar en silencio. Las escrituras son atómicas: un
+fallo a mitad de guardado deja intacto el perfil anterior en lugar de uno a medias.
+
+Los perfiles siguen siendo ficheros JSON planos. El editor es una comodidad, no un
+formato.
 
 !!! success "Puerta"
     Las sugerencias hacen referencia a tu trayectoria real. Cambiar de perfil surte efecto
