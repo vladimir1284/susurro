@@ -42,7 +42,10 @@ class WavSource:
         self.loop = loop
         self._closed = False
         try:
-            self._wav = wave.open(str(self.path), "rb")
+            # Held open for the life of the source rather than wrapped in a
+            # context manager: a source is read incrementally and closed by
+            # whoever owns it, which is what `close()` is for.
+            self._wav = wave.open(str(self.path), "rb")  # noqa: SIM115
         except FileNotFoundError as exc:
             raise SourceError(f"no such file: {self.path}") from exc
         except wave.Error as exc:

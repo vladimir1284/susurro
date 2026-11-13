@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import sys
 import time
 from dataclasses import dataclass

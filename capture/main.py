@@ -6,7 +6,7 @@ import argparse
 import asyncio
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from capture.backends.base import AudioSource, SourceError
@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         print(list_devices())
         return 0
 
-    session_id = args.session_id or datetime.now(timezone.utc).strftime(
+    session_id = args.session_id or datetime.now(UTC).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
     try:

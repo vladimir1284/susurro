@@ -76,7 +76,7 @@ LinkedIn draft if there is a lesson worth writing down.
 
 ### Added after WP6, while the Mac mini is still unavailable
 
-- [ ] **WP7 — Test CI**
+- [x] **WP7 — Test CI**
       The repository runs 257 tests and nothing runs them on push. A GitHub Actions
       workflow for `pytest`, with the Playwright browser cached, matching the strictness
       of the docs workflow.
@@ -234,3 +234,17 @@ result files, then replace the estimates in `docs/architecture/inference.md` and
 `docs/hardware.md` with the measurements and delete the estimate warnings. M3 — running
 `capture/backends/pipewire.py` on real hardware for the first time — also waits for a
 machine with audio devices.
+- `2026-11-13` — WP7 done. `.github/workflows/tests.yml` runs ruff and the full suite on
+  every push and pull request, with the Playwright browser cached on the resolved
+  Playwright version — a looser cache key serves a browser the client then refuses to
+  drive. `libopus0` is installed explicitly because opuslib binds it through ctypes and the
+  wheel does not carry it. The opt-in real-model test runs on `workflow_dispatch` rather
+  than never: it says nothing about the target hardware, but it is the only thing that
+  would catch faster-whisper changing its API underneath us.
+  Ruff added at the same time, configured in `pyproject.toml` and clean. Twelve findings,
+  ten auto-fixed; the two left were decisions rather than slips. `SessionPhase` now
+  inherits `StrEnum`. `WavSource` keeps its `wave.open` outside a context manager with a
+  `noqa` and a comment: a source is read incrementally and closed by its owner, which is
+  what `close()` is for. `E501` is ignored on purpose — the comments in this project
+  explain why decisions were made, and a hard wrap that splits a sentence badly is worse
+  than a long line.

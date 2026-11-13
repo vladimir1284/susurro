@@ -22,8 +22,8 @@ from capture.backends.base import SourceError
 from capture.backends.file import WavSource, write_wav
 from capture.client import CaptureError, stream_lane, stream_session
 from capture.codec import FRAME_BYTES, FRAME_SAMPLES, CodecError, OpusEncoder
-from core.audio import LaneDecoder
 from core import protocol as p
+from core.audio import LaneDecoder
 from core.llm.fake import CannedHintGenerator
 from core.server import Core
 from core.session.profiles import ProfileStore

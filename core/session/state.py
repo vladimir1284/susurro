@@ -21,12 +21,12 @@ loaded; accepting a change mid-session would mean silently throwing both away.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 from core.protocol import Lane, Language, Mode
 
 
-class SessionPhase(str, Enum):
+class SessionPhase(StrEnum):
     IDLE = "idle"
     CONFIGURED = "configured"
     LIVE = "live"

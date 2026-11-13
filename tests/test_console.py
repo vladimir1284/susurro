@@ -14,9 +14,8 @@ Two layers:
 from __future__ import annotations
 
 import asyncio
-import json
 import threading
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import Iterator
 from pathlib import Path
 from urllib.parse import urlparse
 
