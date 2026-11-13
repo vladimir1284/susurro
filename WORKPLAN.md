@@ -47,7 +47,7 @@ LinkedIn draft if there is a lesson worth writing down.
       English-only recognizer. Update `docs/architecture/audio.md` and the profile schema
       in `docs/architecture/protocol.md`, both languages.
 
-- [ ] **WP1 — Protocol**
+- [x] **WP1 — Protocol**
       `core/protocol.py`: message schemas, binary frame encode/decode, version
       negotiation, validation errors. Full unit tests.
 
@@ -129,3 +129,12 @@ has no LinkedIn access and will not acquire any. The operator reviews and posts.
   carry roughly 750 and 530 tokens of static context by a chars/4 estimate, well inside
   the 2-3k assumed in `docs/architecture/inference.md`, which supports skipping retrieval
   in v1. The estimate understates Spanish and no real tokenizer has been run.
+- `2026-11-13` — WP1 done. `core/protocol.py` implements both endpoints' messages with
+  stdlib only: hello parsing with version negotiation, the binary audio frame (little-endian
+  uint64 microsecond timestamp plus Opus packet), console events, and console command
+  parsing. Validation is strict — unknown fields and out-of-range values are rejected
+  rather than ignored. 67 tests pass. One real bug caught by its own test: the version
+  check ran *after* unknown-field rejection, so a newer client carrying a new field would
+  have been told about the field instead of about the version. Fixed, and the test that
+  found it is the one asserting the ordering. Article 2 drafted, on the unmixed-lanes
+  decision.

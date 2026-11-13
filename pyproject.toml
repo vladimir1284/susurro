@@ -1,0 +1,22 @@
+[project]
+name = "susurro"
+version = "0.0.1"
+description = "Local-first, real-time copilot for meetings and interviews"
+requires-python = ">=3.11"
+license = { text = "AGPL-3.0-or-later" }
+dependencies = []
+
+[project.optional-dependencies]
+core = ["websockets>=13", "numpy>=1.26"]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["core"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
