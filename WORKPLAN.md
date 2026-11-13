@@ -51,7 +51,7 @@ LinkedIn draft if there is a lesson worth writing down.
       `core/protocol.py`: message schemas, binary frame encode/decode, version
       negotiation, validation errors. Full unit tests.
 
-- [ ] **WP2 — Core server skeleton**
+- [x] **WP2 — Core server skeleton**
       `core/server.py`: both WebSocket endpoints, token auth, session state machine,
       lane registry. Backend interfaces `core/stt/base.py` and `core/llm/base.py` with
       fake implementations driven by fixtures. Integration test asserting the full event
@@ -80,10 +80,10 @@ English, self-contained, written for readers who do not know the project and are
 necessarily engineers. Drafts land in `articles/`. **They are not posted** — this session
 has no LinkedIn access and will not acquire any. The operator reviews and posts.
 
-1. Why a copilot that runs on your own machine (context, the slow-uplink problem)
-2. Two microphones, zero machine learning (the unmixed-lanes decision)
-3. Why the benchmark comes before the code (gates, and the cost of skipping them)
-4. Prompt caching, explained without jargon
+1. Why a copilot that runs on your own machine (context, the slow-uplink problem) — drafted
+2. Two microphones, zero machine learning (the unmixed-lanes decision) — drafted
+3. Prompt caching, explained without jargon — drafted
+4. Why the benchmark comes before the code (gates, and the cost of skipping them)
 5. Designing a UI you read while keeping eye contact
 6. What building against a 16 GB ceiling forces you to decide
 
@@ -138,3 +138,17 @@ has no LinkedIn access and will not acquire any. The operator reviews and posts.
   have been told about the field instead of about the version. Fixed, and the test that
   found it is the one asserting the ordering. Article 2 drafted, on the unmixed-lanes
   decision.
+- `2026-11-13` — WP2 done. `core/server.py` serves both endpoints over one session, with
+  recognition and hint generation injected so the whole server runs against fakes and needs
+  no model weights. Added `core/session/` (profile loading and a pure state machine),
+  `core/stt/` (recognizer interface plus a scripted fake) and `core/llm/` (hint generator
+  interface plus a canned fake that counts prefills). 126 tests pass. The load-bearing one
+  asserts `prefill_count == 1` after three hints: the latency budget rests on the preamble
+  being processed once per session, and that is a property of the server rather than of any
+  model, so it is testable here and worth locking down before a real backend exists.
+  Design decisions made while implementing, now reflected in code and tests: a new hint
+  supersedes one still in flight rather than being refused, because a speculative hint is
+  usually still streaming when the next end-of-turn arrives; frames arriving before
+  `session.start` are dropped rather than buffered, since there is no prefilled cache to
+  transcribe into; profile ids are rejected if they could walk out of the profile
+  directory. Article 3 drafted, on prompt caching.
