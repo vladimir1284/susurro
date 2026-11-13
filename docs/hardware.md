@@ -1,0 +1,69 @@
+# Hardware
+
+## Reference setup
+
+| Role | Machine | Notes |
+|---|---|---|
+| Core | Mac mini M4, 16 GB unified memory | Runs both models. Dedicated — does not host the meeting. |
+| Capture | Intel N95 mini PC, Linux | Hosts the meeting. Capture and Opus encoding only. |
+| Console | Phone or second monitor | Any browser. |
+
+The split exists for a reason. 16 GB is enough for the models *or* for a video call with
+a browser, not comfortably for both at once — see
+[Inference](architecture/inference.md#the-binding-constraint-is-memory). The N95 would be
+hopeless as a core and is entirely adequate as a capture client, because Opus encoding of
+two 16 kHz mono streams is a rounding error of CPU.
+
+## Core requirements
+
+**Minimum viable:** Apple Silicon with 16 GB of unified memory, or an x86 machine with
+8 GB of VRAM. Below that, an 8B model at q4 plus a speech model will not both stay
+resident, and the reload cost per hint breaks the latency budget.
+
+**Comfortable:** 24 GB or more, which opens the 14B class and leaves real headroom.
+
+Susurro is not CUDA-specific. The core talks to `llama.cpp` or an OpenAI-compatible
+endpoint, so an NVIDIA box works; it is simply not what the project is being designed and
+measured against.
+
+## Capture client requirements
+
+Anything that can run Python and open two audio streams. An N95, a Raspberry Pi 5, an old
+laptop. The client does no inference by design.
+
+On macOS a loopback audio device is required — [BlackHole](https://github.com/ExistentialAudio/BlackHole)
+or equivalent — because macOS provides no system audio capture of its own. On Linux the
+PipeWire monitor source exists by default.
+
+## Network
+
+LAN, or a [Tailscale](https://tailscale.com/) tailnet if the core lives elsewhere.
+Bandwidth is negligible: two Opus lanes at roughly 24 kbit/s each. Latency matters more
+than throughput, which is why Wi-Fi to a congested access point is worth checking before
+blaming the model.
+
+## M0 benchmark procedure
+
+Run before writing any other code. See [Roadmap](roadmap.md#m0-benchmark) for the gate
+conditions.
+
+```bash
+# on the core machine
+git clone https://github.com/vladimir1284/susurro
+cd susurro
+python3 -m venv .venv && .venv/bin/pip install -e ".[bench]"
+.venv/bin/python bench/run.py --out bench/results/$(date +%F)-m4-16gb.json
+```
+
+What it reports:
+
+| Metric | Why it matters |
+|---|---|
+| STT real-time factor | Must be well under 1.0 or transcription falls behind permanently |
+| Cold prefill, 1k / 4k tokens | The cost the prompt cache exists to avoid |
+| Warm prefill, 100-token delta | The cost actually paid per hint |
+| Decode tokens/s | Sets how long a hint takes to finish streaming |
+| Peak resident memory | Decides whether the 8B assumption holds |
+
+Each result is committed to `bench/results/`. The numbers in these docs are updated from
+them, and the estimate warnings removed as they are replaced by measurements.

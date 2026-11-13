@@ -1,0 +1,28 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Docs build
+site/
+
+# Cloudflare / wrangler
+.wrangler/
+node_modules/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Local models / captures / benchmarks
+models/
+captures/
+*.wav
+*.gguf
+bench/results/*.json
+
+# OS
+.DS_Store

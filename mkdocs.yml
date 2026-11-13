@@ -1,0 +1,100 @@
+site_name: Susurro
+site_description: Local-first, real-time meeting and interview copilot. Your audio never leaves your network.
+site_url: https://susurro-docs.ladetec.workers.dev/
+repo_url: https://github.com/vladimir1284/susurro
+repo_name: vladimir1284/susurro
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 Vladimir Rodriguez — AGPL-3.0
+
+theme:
+  name: material
+  language: en
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+
+plugins:
+  - search
+  - i18n:
+      docs_structure: suffix
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: es
+          name: Español
+          build: true
+          nav_translations:
+            Architecture: Arquitectura
+            Development: Desarrollo
+            Overview: Visión general
+            Audio pipeline: Pipeline de audio
+            Inference: Inferencia
+            Protocol: Protocolo
+            Roadmap: Hoja de ruta
+            Hardware: Hardware
+            Setup: Puesta en marcha
+            Documentation: Documentación
+
+nav:
+  - Susurro: index.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Audio pipeline: architecture/audio.md
+      - Inference: architecture/inference.md
+      - Protocol: architecture/protocol.md
+  - Roadmap: roadmap.md
+  - Hardware: hardware.md
+  - Development:
+      - Setup: development/setup.md
+      - Documentation: development/docs.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/vladimir1284/susurro
