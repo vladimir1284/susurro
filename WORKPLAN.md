@@ -74,6 +74,23 @@ LinkedIn draft if there is a lesson worth writing down.
       `bench/run.py` implementing the M0 procedure in `docs/hardware.md`. Dry-run here
       against toy models to prove the harness, not the hardware.
 
+### Added after WP6, while the Mac mini is still unavailable
+
+- [ ] **WP7 — Test CI**
+      The repository runs 257 tests and nothing runs them on push. A GitHub Actions
+      workflow for `pytest`, with the Playwright browser cached, matching the strictness
+      of the docs workflow.
+
+- [ ] **WP8 — Repository front door**
+      `README.md` still says "nothing is implemented", which stopped being true four
+      commits ago. Update it, and add a `CONTRIBUTING.md` that says what a useful first
+      contribution is — a benchmark result from hardware that is not the reference Mac
+      mini.
+
+- [ ] **WP9 — Review pass**
+      Read the whole repository as a stranger would. Find the places where the code and
+      the documentation have drifted apart, and the claims that are no longer true.
+
 ## Articles
 
 English, self-contained, written for readers who do not know the project and are not
@@ -211,7 +228,7 @@ has no LinkedIn access and will not acquire any. The operator reviews and posts.
   with one outlier legitimately excludes it, so the test now uses two outliers to
   demonstrate what it claims. Article 7 drafted.
 
-**All work packages are done.** What remains needs the Mac mini: run
+**WP0 through WP6 are done.** What remains of the original plan needs the Mac mini: run
 `python -m bench.run` against `llama-server` and against `mlx_lm.server`, commit both
 result files, then replace the estimates in `docs/architecture/inference.md` and
 `docs/hardware.md` with the measurements and delete the estimate warnings. M3 — running
