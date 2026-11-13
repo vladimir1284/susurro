@@ -110,6 +110,7 @@ has no LinkedIn access and will not acquire any. The operator reviews and posts.
 5. Designing a UI you read while keeping eye contact — drafted
 6. The interface decides whether the feature is fast (prefill/stream, decode placement) — drafted
 7. Writing the benchmark before the feature (gates in code, ways to measure nothing) — drafted
+8. Answering before the question ends (speculative hints, hysteresis, the flush bug) — drafted
 
 ## Rules for the unattended session
 
