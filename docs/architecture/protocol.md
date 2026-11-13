@@ -29,8 +29,8 @@ The first message is JSON and establishes the lane:
 }
 ```
 
-`lane` is `mic` or `far`. The core replies `{"type":"ready"}` or closes with an error
-code.
+`lane` is `mic` or `far`. The core replies `{"type":"ready","protocol":1}` or sends an
+error and closes.
 
 ### Audio frames
 
@@ -43,6 +43,9 @@ Every subsequent message is binary:
 └────────────────────────┴──────────────────────┘
        8 bytes                   N bytes
 ```
+
+The Opus packet is capped at 4000 bytes. Speech at 16 kHz mono is far under that; the cap
+exists so a stream that has gone wrong fails loudly instead of being fed to a model.
 
 The timestamp comes from the client's monotonic clock at capture time, not from wall
 clock. The core uses it for ordering within a lane and for measuring jitter; it does not
@@ -70,7 +73,7 @@ Bidirectional JSON. No binary frames.
 {"type":"hint.end","hint_id":"h-93","reason":"complete","tokens":38,"ttft_ms":780}
 {"type":"hint.end","hint_id":"h-93","reason":"cancelled"}
 {"type":"state","session":"live","stt":"ready","llm":"ready","lanes":{"mic":"up","far":"up"}}
-{"type":"error","code":"stt_overrun","detail":"recognizer fell behind by 2.3s"}
+{"type":"error","code":"lane_busy","detail":"lane 'mic' is already connected"}
 ```
 
 `hint.end` with `reason: "cancelled"` is the normal outcome of a speculative generation
@@ -90,6 +93,24 @@ the other party interrupted. The console discards the partial hint rather than s
 preamble that gets prefilled into the
 [prompt cache](inference.md#prompt-cache-is-a-requirement-not-an-optimization). Changing
 it mid-session invalidates that cache and is therefore rejected, not silently honoured.
+
+## Error codes
+
+Every error the core sends carries one of these. The list is exhaustive and checked by a
+test: a code in the source that is missing here, or a code here that nothing emits, fails
+the suite.
+
+| Code | Means |
+|---|---|
+| `unsupported_version` | The client speaks a protocol version this core does not. Checked before anything else about the message, so a newer client is told the useful thing. |
+| `malformed_message` | A JSON message was unparseable, had the wrong shape, or carried an unknown field. |
+| `malformed_frame` | A binary frame was too short, had an out-of-range timestamp, or an empty or oversized payload. |
+| `decode_failed` | An Opus packet would not decode. One bad packet is reported and skipped; the lane stays up. |
+| `lane_busy` | Something is already connected on that lane. |
+| `bad_transition` | A command arrived in a session phase that does not allow it — a hint with no live session, `session.config` while live. |
+| `bad_request` | A profile is missing, invalid, or disagrees with the `session.config` that named it. |
+| `hint_failed` | Generation raised. The matching `hint.end` carries `reason: "error"`. |
+| `protocol_error` | Base code; not emitted directly. |
 
 ## Profiles
 

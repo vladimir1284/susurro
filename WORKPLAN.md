@@ -87,7 +87,7 @@ LinkedIn draft if there is a lesson worth writing down.
       contribution is — a benchmark result from hardware that is not the reference Mac
       mini.
 
-- [ ] **WP9 — Review pass**
+- [x] **WP9 — Review pass**
       Read the whole repository as a stranger would. Find the places where the code and
       the documentation have drifted apart, and the claims that are no longer true.
 
@@ -261,3 +261,28 @@ machine with audio devices.
   guards all of it: relative links resolve, no link points at the undeployed site, the
   README does not claim nothing is built, and it still names the unrun backend. The README
   was stale for four commits and nobody noticed, because nobody reads their own README.
+- `2026-11-13` — WP9 done. Read the repository as a stranger would. Five pieces of drift,
+  each a specific checkable claim that had quietly stopped being true:
+  1. **`docs/architecture/audio.md` described a Silero VAD running per lane on the core.
+     It does not exist.** What exists is faster-whisper's internal VAD filter, which covers
+     segment boundaries and not the end-of-turn event that speculative hints need. The page
+     now says which half is built and names M4 as the rest. `overview.md` claimed the same
+     thing in passing and no longer does. This was the worst of the five: a reader would
+     have gone looking for a component that was never written.
+  2. The protocol document said the core replies `{"type":"ready"}`; it sends a protocol
+     version alongside it.
+  3. An error example used `stt_overrun`, a code nothing emits. A documented code that
+     never arrives is worse than a missing one — a client author writes a handler for it.
+     There is now an exhaustive error table, and `ProfileError` declares its own code
+     instead of the server supplying a default, so every code comes from one place.
+  4. The repository layout drew a `core/audio/` package containing VAD and resampling.
+     None of the three existed; the real file is `core/audio.py` and it decodes Opus.
+  5. The inference page described two runtimes as separate integrations; they are reached
+     through one OpenAI-compatible client, and the warm-up is a `max_tokens=0` completion.
+     Also unified three different install lines for the benchmark onto the `[bench]` extra.
+  `tests/test_docs_match_code.py` now guards all of it: emitted error codes and documented
+  ones must match exactly in both directions, every JSON example in the protocol document
+  must parse and be a message type the code knows, the documented `ready` shape must equal
+  what `p.ready()` returns, the payload cap must match the constant, every path drawn in
+  the layout must exist, and the estimate warnings must stay until `bench/results/` holds a
+  run that is not a dry run. 285 tests pass.

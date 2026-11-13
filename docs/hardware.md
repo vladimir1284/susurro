@@ -62,7 +62,7 @@ mlx_lm.server --model <repo> --port 8080
 # on the core machine
 git clone https://github.com/vladimir1284/susurro
 cd susurro
-python3 -m venv .venv && .venv/bin/pip install -e ".[whisper,openai,dev]"
+python3 -m venv .venv && .venv/bin/pip install -e ".[bench]"
 .venv/bin/python -m bench.run \
   --label llama-cpp \
   --audio samples/interview-30s.wav \

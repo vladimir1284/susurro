@@ -72,9 +72,15 @@ Both candidate runtimes support this:
 | `llama.cpp` server | Slots with prefix-cache reuse; `--slot-save-path` for persistence |
 | `mlx-lm` | Explicit prompt cache objects, saved and restored between calls |
 
-`llama.cpp` is the starting point for its mature OpenAI-compatible server and cache
-handling. MLX generally prefills faster on Apple Silicon. [M0](../roadmap.md#m0-benchmark)
-measures both and picks the winner on evidence, not on reputation.
+Both expose an OpenAI-compatible HTTP API, so Susurro reaches them through one client
+(`core/llm/openai_compat.py`) rather than two code paths, and switching between them is a
+configuration change. The warm-up is a completion requested with `max_tokens=0`: it
+processes the preamble and populates the server's cache without generating anything. A
+server that ignores a zero-token request simply moves that cost to the first hint, which
+is harmless.
+
+MLX generally prefills faster on Apple Silicon. [M0](../roadmap.md#m0-benchmark) measures
+both and picks the winner on evidence, not on reputation.
 
 ## No retrieval in v1
 

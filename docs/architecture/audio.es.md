@@ -43,14 +43,31 @@ llegada. Ver [Protocolo](protocol.md#extremo-de-captura).
 
 ## Detección de actividad de voz
 
-[Silero VAD](https://github.com/snakers4/silero-vad) corre por carril en el núcleo, no en
-el cliente. Mantenerlo del lado del servidor deja el cliente de captura trivial de portar,
-y el modelo de VAD no cuesta casi nada al lado de los modelos ya residentes.
+!!! warning "Construido a medias"
+    Lo que hay hoy es el filtro de VAD propio del reconocedor, que basta para las fronteras
+    de segmento. El detector separado por carril que se describe abajo todavía no existe, y
+    el evento de fin de turno que depende de él tampoco. Eso es
+    [M4](../roadmap.md#m4-sugerencia-especulativa).
 
-El VAD produce dos cosas que el resto del pipeline necesita:
+Las fronteras de segmento las resuelve hoy el filtro de VAD incorporado de faster-whisper,
+dentro de `core/stt/whisper.py`. Decide qué partes de una ventana son voz, y una ventana
+que lleva suficiente tiempo en silencio cierra la locución. Un techo de longitud de ventana
+la cierra igualmente, así que quien no hace pausas sigue produciendo finales.
 
-1. **Fronteras de segmento** para el reconocedor, de modo que transcriba voz y no
-   silencio.
+Eso cubre lo que necesita el reconocedor y no el segundo requisito. Las sugerencias
+especulativas necesitan saber que **la otra parte dejó de hablar**, como evento y pronto,
+no como efecto secundario de una pasada de transcripción que corre una vez por segundo.
+Para eso hace falta un detector dedicado como
+[Silero VAD](https://github.com/snakers4/silero-vad) corriendo por carril en el núcleo,
+por delante del reconocedor.
+
+Va en el núcleo y no en el cliente de captura por la misma razón que todo lo demás: el
+cliente se mantiene trivial de portar, y el modelo de VAD no cuesta casi nada al lado de
+los modelos ya residentes.
+
+Cuando exista, producirá dos cosas:
+
+1. **Fronteras de segmento** para el reconocedor, relevando a su filtro interno.
 2. **Eventos de fin de turno** en el carril `far`, que disparan la generación especulativa
    de sugerencias.
 

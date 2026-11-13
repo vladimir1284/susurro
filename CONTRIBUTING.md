@@ -11,7 +11,7 @@ other machines is worth more than any feature.
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e ".[whisper,openai,bench]"
+.venv/bin/pip install -e ".[bench]"
 # start llama-server or mlx_lm.server on port 8080, then:
 .venv/bin/python -m bench.run --label <your-hardware> --audio <30s of real speech>.wav
 ```

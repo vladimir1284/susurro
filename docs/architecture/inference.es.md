@@ -75,10 +75,15 @@ Ambos runtimes candidatos lo soportan:
 | Servidor `llama.cpp` | Slots con reutilización de caché de prefijo; `--slot-save-path` para persistencia |
 | `mlx-lm` | Objetos de caché de prompt explícitos, guardados y restaurados entre llamadas |
 
-`llama.cpp` es el punto de partida por su servidor maduro compatible con OpenAI y su
-manejo de caché. MLX suele prefillear más rápido en Apple Silicon.
-[M0](../roadmap.md#m0-benchmark) mide ambos y elige al ganador por evidencia, no por
-reputación.
+Ambos exponen una API HTTP compatible con OpenAI, así que Susurro los alcanza con un solo
+cliente (`core/llm/openai_compat.py`) en lugar de dos rutas de código, y cambiar de uno a
+otro es un cambio de configuración. El calentamiento es una completion pedida con
+`max_tokens=0`: procesa el preámbulo y llena la caché del servidor sin generar nada. Un
+servidor que ignore una petición de cero tokens simplemente mueve ese coste a la primera
+sugerencia, lo cual es inocuo.
+
+MLX suele prefillear más rápido en Apple Silicon. [M0](../roadmap.md#m0-benchmark) mide
+ambos y elige al ganador por evidencia, no por reputación.
 
 ## Sin recuperación en v1
 

@@ -10,19 +10,26 @@
 
 ```
 susurro/
-├── core/              # inference server: VAD, STT, LLM, session state
-│   ├── audio/         # lane handling, VAD, resampling
-│   ├── stt/           # recognizer backends
-│   ├── llm/           # runtime backends, prompt cache, presets
-│   ├── session/       # profiles, context assembly, state machine
-│   └── server.py      # WebSocket endpoints + static console
-├── capture/           # thin client
-│   ├── backends/      # file.py (replay), pipewire.py, coreaudio.py
-│   └── main.py
-├── console/           # static web UI (no build step)
-├── bench/             # M0 benchmark harness
-│   └── results/       # committed measurements
-├── docs/              # this documentation (en + .es.md)
+├── core/
+│   ├── protocol.py    # messages, framing, validation. No I/O.
+│   ├── audio.py       # Opus decoding, one decoder per lane
+│   ├── server.py      # both WebSocket endpoints + the console as static files
+│   ├── main.py        # entry point; backends chosen by configuration
+│   ├── stt/           # recognizer interface, scripted fake, faster-whisper
+│   ├── llm/           # generator interface, canned fake, OpenAI-compatible client
+│   └── session/       # profiles, preamble assembly, state machine
+├── capture/
+│   ├── codec.py       # Opus encoding
+│   ├── client.py      # one WebSocket per lane
+│   ├── main.py
+│   └── backends/      # file.py (replay), pipewire.py (never executed)
+├── console/           # static web UI, no build step; state.js is pure
+├── bench/             # M0 harness: metrics.py, report.py, run.py
+│   └── results/       # committed measurements, one file per run
+├── tests/
+│   └── fixtures/profiles/   # synthetic; real ones go in local/, gitignored
+├── docs/              # this documentation (page.md + page.es.md)
+├── core.toml.example
 └── mkdocs.yml
 ```
 

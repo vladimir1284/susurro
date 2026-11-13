@@ -43,14 +43,31 @@ so the core can order and align lanes without trusting arrival time. See
 
 ## Voice activity detection
 
-[Silero VAD](https://github.com/snakers4/silero-vad) runs per lane on the core, not on
-the client. Keeping it server-side means the capture client stays trivial to port, and
-the VAD model costs almost nothing next to the models already resident.
+!!! warning "Partly built"
+    What exists today is the recognizer's own VAD filter, which is enough for segment
+    boundaries. The separate per-lane detector described below does not exist yet, and
+    neither does the end-of-turn event that depends on it. That is
+    [M4](../roadmap.md#m4-speculative-hint).
 
-VAD produces two things the rest of the pipeline needs:
+Segment boundaries are handled today by faster-whisper's built-in VAD filter, inside
+`core/stt/whisper.py`. It decides which parts of a window are speech, and a window that
+has gone quiet for long enough closes the utterance. A ceiling on window length closes it
+regardless, so a speaker who never pauses still produces finals.
 
-1. **Segment boundaries** for the recognizer, so it transcribes speech rather than
-   silence.
+That covers the recognizer's needs and not the second requirement. Speculative hints need
+to know that **the other party stopped talking**, as an event, promptly — not as a side
+effect of a transcription pass that runs once a second. For that, a dedicated detector
+such as [Silero VAD](https://github.com/snakers4/silero-vad) has to run per lane on the
+core, ahead of the recognizer.
+
+It belongs on the core rather than in the capture client for the same reason everything
+else does: the client stays trivial to port, and the VAD model costs almost nothing next
+to the models already resident.
+
+When it exists, it will produce two things:
+
+1. **Segment boundaries** for the recognizer, taking over from the recognizer's internal
+   filter.
 2. **End-of-turn events** on the `far` lane, which drive speculative hint generation.
 
 ## Speech recognition

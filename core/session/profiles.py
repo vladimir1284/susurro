@@ -31,7 +31,14 @@ _SECTION_HEADINGS: dict[str, str] = {
 
 
 class ProfileError(Exception):
-    """A profile file is missing, unreadable, or does not describe a profile."""
+    """A profile file is missing, unreadable, or does not describe a profile.
+
+    ``code`` is declared rather than defaulted by the caller, so that every
+    code reaching the console comes from exactly one place and can be checked
+    against the protocol documentation.
+    """
+
+    code = "bad_request"
 
 
 @dataclass(frozen=True, slots=True)

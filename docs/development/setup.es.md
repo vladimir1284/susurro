@@ -10,19 +10,26 @@
 
 ```
 susurro/
-├── core/              # servidor de inferencia: VAD, STT, LLM, estado de sesión
-│   ├── audio/         # manejo de carriles, VAD, remuestreo
-│   ├── stt/           # backends de reconocimiento
-│   ├── llm/           # backends de runtime, caché de prompt, presets
-│   ├── session/       # perfiles, armado de contexto, máquina de estados
-│   └── server.py      # extremos WebSocket + consola estática
-├── capture/           # cliente ligero
-│   ├── backends/      # file.py (reproducción), pipewire.py, coreaudio.py
-│   └── main.py
-├── console/           # interfaz web estática (sin paso de build)
-├── bench/             # arnés del benchmark M0
-│   └── results/       # mediciones versionadas
-├── docs/              # esta documentación (en + .es.md)
+├── core/
+│   ├── protocol.py    # mensajes, framing, validación. Sin E/S.
+│   ├── audio.py       # decodificación Opus, un decoder por carril
+│   ├── server.py      # ambos extremos WebSocket + la consola como ficheros estáticos
+│   ├── main.py        # punto de entrada; backends elegidos por configuración
+│   ├── stt/           # interfaz de reconocedor, fake con guion, faster-whisper
+│   ├── llm/           # interfaz de generador, fake enlatado, cliente compatible con OpenAI
+│   └── session/       # perfiles, armado del preámbulo, máquina de estados
+├── capture/
+│   ├── codec.py       # codificación Opus
+│   ├── client.py      # un WebSocket por carril
+│   ├── main.py
+│   └── backends/      # file.py (reproducción), pipewire.py (nunca ejecutado)
+├── console/           # interfaz web estática, sin build; state.js es puro
+├── bench/             # arnés M0: metrics.py, report.py, run.py
+│   └── results/       # mediciones versionadas, un fichero por ejecución
+├── tests/
+│   └── fixtures/profiles/   # sintéticos; los reales van en local/, ignorado por git
+├── docs/              # esta documentación (page.md + page.es.md)
+├── core.toml.example
 └── mkdocs.yml
 ```
 

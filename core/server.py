@@ -219,8 +219,7 @@ class Core:
                     await self.cancel_hint(hint_id)
                     return
         except (TransitionError, ProfileError) as exc:
-            code = getattr(exc, "code", "bad_request")
-            await connection.send(p.error(code, str(exc)))
+            await connection.send(p.error(exc.code, str(exc)))
             return
         await self.broadcast(self.state_event())
 

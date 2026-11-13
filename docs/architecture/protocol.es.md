@@ -30,8 +30,8 @@ El primer mensaje es JSON y establece el carril:
 }
 ```
 
-`lane` es `mic` o `far`. El núcleo responde `{"type":"ready"}` o cierra con un código de
-error.
+`lane` es `mic` o `far`. El núcleo responde `{"type":"ready","protocol":1}` o envía un
+error y cierra.
 
 ### Tramas de audio
 
@@ -44,6 +44,10 @@ Todo mensaje posterior es binario:
 └────────────────────────┴──────────────────────┘
        8 bytes                   N bytes
 ```
+
+El paquete Opus está limitado a 4000 bytes. El habla a 16 kHz mono queda muy por debajo;
+el límite existe para que un flujo que se ha estropeado falle de forma ruidosa en lugar de
+acabar en un modelo.
 
 La marca de tiempo sale del reloj monótono del cliente en el momento de captura, no del
 reloj de pared. El núcleo la usa para ordenar dentro de un carril y para medir jitter; no
@@ -71,7 +75,7 @@ JSON bidireccional. Sin tramas binarias.
 {"type":"hint.end","hint_id":"h-93","reason":"complete","tokens":38,"ttft_ms":780}
 {"type":"hint.end","hint_id":"h-93","reason":"cancelled"}
 {"type":"state","session":"live","stt":"ready","llm":"ready","lanes":{"mic":"up","far":"up"}}
-{"type":"error","code":"stt_overrun","detail":"recognizer fell behind by 2.3s"}
+{"type":"error","code":"lane_busy","detail":"lane 'mic' is already connected"}
 ```
 
 Un `hint.end` con `reason: "cancelled"` es el desenlace normal de una generación
@@ -93,6 +97,24 @@ estático que se prefillea en la
 [caché de prompt](inference.md#la-cache-de-prompt-es-un-requisito-no-una-optimizacion).
 Cambiarlo a mitad de sesión invalida esa caché y por tanto se rechaza, no se acepta en
 silencio.
+
+## Códigos de error
+
+Todo error que envía el núcleo lleva uno de estos. La lista es exhaustiva y la comprueba un
+test: un código en el código fuente que falte aquí, o uno aquí que nadie emita, rompe la
+suite.
+
+| Código | Significa |
+|---|---|
+| `unsupported_version` | El cliente habla una versión del protocolo que este núcleo no. Se comprueba antes que nada del mensaje, para que a un cliente más nuevo se le diga lo útil. |
+| `malformed_message` | Un mensaje JSON no se pudo interpretar, tenía forma incorrecta o traía un campo desconocido. |
+| `malformed_frame` | Una trama binaria era demasiado corta, tenía marca de tiempo fuera de rango, o carga vacía o excesiva. |
+| `decode_failed` | Un paquete Opus no se pudo decodificar. Un paquete malo se reporta y se omite; el carril sigue en pie. |
+| `lane_busy` | Ya hay algo conectado en ese carril. |
+| `bad_transition` | Llegó un comando en una fase de sesión que no lo permite: una sugerencia sin sesión en vivo, `session.config` estando en vivo. |
+| `bad_request` | Un perfil falta, es inválido, o no concuerda con el `session.config` que lo nombró. |
+| `hint_failed` | La generación lanzó una excepción. El `hint.end` correspondiente lleva `reason: "error"`. |
+| `protocol_error` | Código base; no se emite directamente. |
 
 ## Perfiles
 
