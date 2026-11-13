@@ -377,3 +377,10 @@ machine with audio devices.
   anyone opened it; `[hidden] { display: none !important }` now exists with a comment
   saying why. And the picker's re-render guard keyed on profile ids alone, so renaming a
   profile saved correctly and changed nothing on screen. 359 tests pass.
+- `2026-11-13` — CI caught a race the local run missed, which is the second time a green
+  local suite has not been evidence. The editor's fields were editable while the
+  `profile.request` was still in flight, so the reply overwrote whatever had been typed —
+  and the save then wrote the *old* label back and reported success. A user would have seen
+  "saved" and no change. Locally the round trip happened to land before the test typed;
+  on CI it did not. The fields are now disabled until the requested profile arrives, with a
+  test that types immediately and asserts the value survives.

@@ -522,6 +522,9 @@ class TestProfileEditor:
         expect(page.locator("#start")).to_be_enabled()
         page.locator("#edit").click()
         expect(page.locator("#editor")).to_be_visible()
+        # The fields stay disabled until the profile arrives. Typing before
+        # that used to be silently overwritten by the late reply.
+        expect(page.locator("#editor-label")).to_be_enabled()
 
     def test_the_editor_is_closed_until_asked_for(
         self, page: Page, writable_console
@@ -569,6 +572,9 @@ class TestProfileEditor:
 
         page.locator("#edit").click()
         expect(page.locator("#editor")).to_be_visible()
+        # The fields stay disabled until the profile arrives. Typing before
+        # that used to be silently overwritten by the late reply.
+        expect(page.locator("#editor-label")).to_be_enabled()
         page.fill("#editor-label", "Changed mid-call")
         page.locator("#editor-save").click()
 
@@ -584,3 +590,19 @@ class TestProfileEditor:
         page.locator("#editor-close").click()
         expect(page.locator("#editor")).to_be_hidden()
         expect(page.locator("#transcript")).to_be_visible()
+
+    def test_typing_before_the_profile_arrives_is_not_discarded(
+        self, page: Page, writable_console
+    ) -> None:
+        # Found by CI, not locally: the fields were editable while the request
+        # was in flight, and the reply overwrote whatever had been typed. The
+        # save then wrote the old label back and reported success.
+        url, _ = writable_console
+        page.goto(f"{url}/?token={TOKEN}")
+        expect(page.locator("#start")).to_be_enabled()
+        page.locator("#edit").click()
+        expect(page.locator("#editor-label")).to_be_enabled()
+        page.fill("#editor-label", "Typed immediately")
+        page.locator("#editor-save").click()
+        expect(page.locator("#editor-status")).to_have_text("saved")
+        expect(page.locator("#editor-label")).to_have_value("Typed immediately")

@@ -39,6 +39,10 @@ const el = {
 // someone mid-call would be hostile.
 let editorOpen = false;
 let loadedProfile = null;
+// Which profile the editor is waiting for. Until it arrives the fields are
+// disabled: filling them from a late reply would silently discard anything
+// typed in the meantime.
+let pendingProfileId = null;
 
 let state = initial();
 let socket = null;
@@ -130,9 +134,22 @@ function selectedProfile() {
   return state.profiles.find((p) => p.id === el.profile.value) ?? null;
 }
 
+const EDITOR_FIELDS = [
+  "editorLabel", "editorLanguage", "editorMode",
+  "editorResume", "editorRole", "editorNotes", "editorSave",
+];
+
 function renderEditor() {
   el.editor.hidden = !editorOpen;
-  if (!editorOpen || !state.editing || state.editing === loadedProfile) return;
+  if (!editorOpen) return;
+
+  const ready = state.editing !== null && state.editing.id === pendingProfileId;
+  for (const field of EDITOR_FIELDS) el[field].disabled = !ready;
+  if (!ready) {
+    setStatus("loading…", "");
+    return;
+  }
+  if (state.editing === loadedProfile) return;
 
   // Fill the fields once per loaded profile. Rewriting them on every event
   // would move the caret while someone is typing.
@@ -220,6 +237,7 @@ el.edit.addEventListener("click", () => {
   if (!profile) return;
   editorOpen = true;
   loadedProfile = null;
+  pendingProfileId = profile.id;
   send({ type: "profile.request", profile_id: profile.id });
   render();
 });
