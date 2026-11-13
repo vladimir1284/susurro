@@ -112,5 +112,15 @@ Un perfil es el contexto estático de una sesión, almacenado en el núcleo:
 }
 ```
 
+`language` es `en` o `es`, y es toda la configuración de idioma que hay: una sesión está en
+un idioma de principio a fin. El núcleo lo usa para seleccionar el reconocedor en
+`session.start` —ver [Un solo idioma por sesión](audio.md#un-solo-idioma-por-sesion)— y
+para elegir el prompt de sistema en el que se escriben las sugerencias. No hay detección
+automática ni cambio a mitad de sesión; cambiar de idioma significa parar y arrancar una
+sesión nueva.
+
+`mode` es `conversational`, `technical` o `business`, y fija la forma de las sugerencias,
+no su contenido.
+
 Los perfiles son ficheros planos en disco. No hay base de datos, porque no hay problema de
 escala que resolver: un usuario tiene un puñado de perfiles, no miles.

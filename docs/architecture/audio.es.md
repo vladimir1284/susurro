@@ -74,15 +74,38 @@ supondría reescribir el prompt en cada pasada, lo que destruye la caché de pre
 que depende la
 [Inferencia](inference.md#la-cache-de-prompt-es-un-requisito-no-una-optimizacion).
 
+### Un solo idioma por sesión
+
+Una sesión está en exactamente un idioma, declarado en el perfil antes de que la sesión
+arranque. Las sesiones son unas veces en español y otras en inglés; una misma llamada
+nunca cambia de una a otra.
+
+Vale la pena enunciar ese supuesto de forma explícita, porque compra algo real. Un sistema
+que tiene que sobrevivir a un cambio de idioma a mitad de frase se ve obligado a ejecutar
+un reconocedor multilingüe siempre y a pagar su coste en todas las sesiones. Un sistema
+que conoce el idioma de antemano puede elegir el reconocedor más barato que lo cubra.
+
 ### Elección de modelo
 
-| Modelo | Idiomas | Notas |
+| Modelo | Idiomas | Papel |
 |---|---|---|
-| `whisper-large-v3-turbo` | Multilingüe | Por defecto. Necesario para español y para reuniones con mezcla de idiomas. |
-| Parakeet TDT 0.6B | Solo inglés | Bastante más rápido cuando solo hay inglés. Vale la pena medirlo en [M0](../roadmap.md#m0-benchmark) como opción solo-inglés. |
+| Parakeet TDT 0.6B | Solo inglés | Ruta rápida para `language: "en"`. Bastante más rápido que Whisper cuando solo hay inglés. |
+| `whisper-large-v3-turbo` | Multilingüe | Se usa para `language: "es"` y como alternativa para todo lo que Parakeet no cubre. |
 
-El valor por defecto es multilingüe, porque un copiloto que transcribe mal la única
-reunión que se pasó al español no es un copiloto en el que puedas confiar.
+El reconocedor se selecciona a partir del campo `language` del perfil en `session.start` y
+no cambia mientras la sesión corre. Cambiarlo supondría intercambiar un modelo cargado a
+mitad de conversación, lo que cuesta segundos en una máquina sin memoria de sobra para
+mantener los dos.
+
+[M0](../roadmap.md#m0-benchmark) mide ambos reconocedores como opciones de primera clase,
+en lugar de tratar el de inglés como una nota al pie. Si Parakeet resulta
+apreciablemente más rápido, las sesiones en inglés recuperan ese margen y pueden gastarlo
+en un modelo de lenguaje mayor o en un contexto más largo.
+
+!!! note "Qué pasa si el supuesto se rompe"
+    A quien cambie de idioma a mitad de llamada se le transcribirá mal, en lugar de
+    detectarlo y gestionarlo. Es un canje deliberado, no un descuido. La recuperación es
+    manual: parar la sesión, cambiar el perfil y volver a empezar.
 
 ## Presupuesto de latencia
 

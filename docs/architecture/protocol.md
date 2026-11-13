@@ -109,5 +109,14 @@ A profile is the static context for a session, stored on the core:
 }
 ```
 
+`language` is `en` or `es`, and it is the whole of the language configuration: a session is
+in one language from start to finish. The core uses it to select the recognizer at
+`session.start` — see [One language per session](audio.md#one-language-per-session) — and
+to pick the system prompt the hints are written in. There is no auto-detection and no
+mid-session switch; changing the language means stopping and starting a new session.
+
+`mode` is `conversational`, `technical` or `business`, and sets the shape of the hints
+rather than their content.
+
 Profiles are plain files on disk. There is no database, because there is no scale problem
 to solve: a user has a handful of profiles, not thousands.

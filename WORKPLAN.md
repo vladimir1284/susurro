@@ -42,7 +42,7 @@ models, so that it runs on the Mac mini the moment the operator is back.
 Each package ends in: passing tests, a commit, docs updated if the design moved, and a
 LinkedIn draft if there is a lesson worth writing down.
 
-- [ ] **WP0 — Session language decision**
+- [x] **WP0 — Session language decision**
       One language per session, set per profile. English sessions may use a faster
       English-only recognizer. Update `docs/architecture/audio.md` and the profile schema
       in `docs/architecture/protocol.md`, both languages.
@@ -113,3 +113,9 @@ has no LinkedIn access and will not acquire any. The operator reviews and posts.
   pending the operator. **This blocks only the published docs site, not any work package.**
   Treat a red `docs` run with a passing build step and a failing deploy step as this known
   blocker, not a regression.
+- `2026-11-13` — WP0 done. One language per session, declared in the profile, fixed for
+  the session's lifetime. Documented in `docs/architecture/audio.md` (new section, replaces
+  the multilingual-by-default reasoning) and in the profile schema in
+  `docs/architecture/protocol.md`, both languages. Consequence recorded: Parakeet becomes
+  the English fast path rather than a footnote, and M0 must measure both recognizers as
+  first-class options. Article 1 drafted.

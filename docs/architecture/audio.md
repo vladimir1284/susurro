@@ -71,15 +71,38 @@ Only finals enter the language model's context. Feeding partials in would mean r
 the prompt on every pass, which destroys the prefix cache that
 [Inference](inference.md#prompt-cache-is-a-requirement-not-an-optimization) depends on.
 
+### One language per session
+
+A session is in exactly one language, declared in the profile before the session starts.
+Sessions are sometimes in Spanish and sometimes in English; a single call never switches
+between them.
+
+That assumption is worth stating explicitly, because it buys something real. A system that
+has to survive mid-sentence language switching is forced to run a multilingual recognizer
+at all times and to pay its cost on every session. A system that knows the language up
+front can pick the cheapest recognizer that handles it.
+
 ### Model choice
 
-| Model | Languages | Notes |
+| Model | Languages | Role |
 |---|---|---|
-| `whisper-large-v3-turbo` | Multilingual | Default. Needed for Spanish and for mixed-language meetings. |
-| Parakeet TDT 0.6B | English only | Substantially faster where only English is involved. Worth benchmarking in [M0](../roadmap.md#m0-benchmark) as an English-only option. |
+| Parakeet TDT 0.6B | English only | Fast path for `language: "en"`. Substantially faster than Whisper where only English is involved. |
+| `whisper-large-v3-turbo` | Multilingual | Used for `language: "es"` and as the fallback for anything Parakeet does not cover. |
 
-The default is multilingual, because a copilot that mis-transcribes the one meeting that
-switched to Spanish is not a copilot you can rely on.
+The recognizer is selected from the profile's `language` field at `session.start` and does
+not change while the session runs. Changing it would mean swapping a loaded model
+mid-conversation, which costs seconds on a machine with no memory to spare for keeping
+both.
+
+[M0](../roadmap.md#m0-benchmark) measures both recognizers as first-class options rather
+than treating the English one as a footnote. If Parakeet turns out to be meaningfully
+faster, English sessions get that headroom back and can spend it on a larger language
+model or a longer context.
+
+!!! note "What happens if the assumption breaks"
+    A speaker who switches language mid-call will be transcribed badly rather than
+    detected and handled. This is a deliberate trade, not an oversight. The recovery is
+    manual: stop the session, change the profile, start again.
 
 ## Latency budget
 
