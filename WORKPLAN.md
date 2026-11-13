@@ -70,7 +70,7 @@ LinkedIn draft if there is a lesson worth writing down.
       `faster-whisper` tiny and a sub-1B GGUF on CPU. Proves the spine end to end.
       Any timing produced here is meaningless for M0 and must be labelled as such.
 
-- [ ] **WP6 — Benchmark harness** *(stretch)*
+- [x] **WP6 — Benchmark harness** *(stretch)*
       `bench/run.py` implementing the M0 procedure in `docs/hardware.md`. Dry-run here
       against toy models to prove the harness, not the hardware.
 
@@ -86,6 +86,7 @@ has no LinkedIn access and will not acquire any. The operator reviews and posts.
 4. Building a system you cannot run (fakes, honest labels, measuring your own code) — drafted
 5. Designing a UI you read while keeping eye contact — drafted
 6. The interface decides whether the feature is fast (prefill/stream, decode placement) — drafted
+7. Writing the benchmark before the feature (gates in code, ways to measure nothing) — drafted
 
 ## Rules for the unattended session
 
@@ -193,3 +194,26 @@ has no LinkedIn access and will not acquire any. The operator reviews and posts.
   `core/main.py` plus `core.toml.example` make the core actually runnable, with backends
   chosen by configuration rather than by import, and a refusal to bind `0.0.0.0` without
   `--allow-public-bind`. 226 tests pass, 1 skipped by design. Article 6 drafted.
+- `2026-11-13` — WP6 done. `bench/` implements the M0 procedure: STT real-time factor,
+  cold prefill at 1k and 4k, warm time-to-first-token, sustained decode rate, peak resident
+  memory. Both runtimes worth comparing speak the OpenAI API, so there is one client rather
+  than two code paths — `llama-server` and `mlx_lm.server` are each measured by running
+  them in turn with `--label`.
+  Three refusals built in, each guarding against a way to measure nothing: `--audio` is
+  required and must be real speech, because silence gives the recognizer less work and a
+  flattering factor; the cold-prefill prompt varies per repeat, because repeats against a
+  warm server cache measure the cache; and the memory figure needs `--server-pid`, because
+  the model runs in another process and measuring the harness would report a few hundred
+  megabytes and look like good news. Gates live in `bench/report.py` with the exit code
+  reflecting them, so a disappointing number cannot be talked down to a pass, and a gate
+  with no measurement behind it explicitly fails. Every result records the machine it came
+  from. 257 tests pass. One test was wrong rather than the code: a p90 over ten samples
+  with one outlier legitimately excludes it, so the test now uses two outliers to
+  demonstrate what it claims. Article 7 drafted.
+
+**All work packages are done.** What remains needs the Mac mini: run
+`python -m bench.run` against `llama-server` and against `mlx_lm.server`, commit both
+result files, then replace the estimates in `docs/architecture/inference.md` and
+`docs/hardware.md` with the measurements and delete the estimate warnings. M3 — running
+`capture/backends/pipewire.py` on real hardware for the first time — also waits for a
+machine with audio devices.

@@ -47,12 +47,26 @@ blaming the model.
 Run before writing any other code. See [Roadmap](roadmap.md#m0-benchmark) for the gate
 conditions.
 
+Both runtimes worth comparing speak the OpenAI API, so there is one harness rather than
+two code paths. Start one, measure it, then start the other and measure again:
+
+```bash
+# llama.cpp
+llama-server -m model.gguf -c 8192 --port 8080
+
+# or MLX
+mlx_lm.server --model <repo> --port 8080
+```
+
 ```bash
 # on the core machine
 git clone https://github.com/vladimir1284/susurro
 cd susurro
-python3 -m venv .venv && .venv/bin/pip install -e ".[bench]"
-.venv/bin/python bench/run.py --out bench/results/$(date +%F)-m4-16gb.json
+python3 -m venv .venv && .venv/bin/pip install -e ".[whisper,openai,dev]"
+.venv/bin/python -m bench.run \
+  --label llama-cpp \
+  --audio samples/interview-30s.wav \
+  --server-pid "$(pgrep -f llama-server)"
 ```
 
 What it reports:
@@ -61,9 +75,27 @@ What it reports:
 |---|---|
 | STT real-time factor | Must be well under 1.0 or transcription falls behind permanently |
 | Cold prefill, 1k / 4k tokens | The cost the prompt cache exists to avoid |
-| Warm prefill, 100-token delta | The cost actually paid per hint |
+| Warm time to first token | The cost actually paid per hint. **The number the product lives on.** |
 | Decode tokens/s | Sets how long a hint takes to finish streaming |
 | Peak resident memory | Decides whether the 8B assumption holds |
 
-Each result is committed to `bench/results/`. The numbers in these docs are updated from
-them, and the estimate warnings removed as they are replaced by measurements.
+Three things the harness insists on, because each one is an easy way to measure nothing:
+
+- **Real speech audio.** `--audio` is required. Silence or a tone gives the recognizer
+  less work than real speech and produces a flattering real-time factor.
+- **A different prompt per cold repeat.** A "cold" prefill measured against a server whose
+  cache is already warm is not a measurement.
+- **The server's pid.** The model runs in another process; without `--server-pid` the
+  memory figure would describe the harness instead.
+
+The exit code is the gate: `0` if every threshold in
+[Roadmap](roadmap.md#m0-benchmark) is met, `1` if any is missed or unmeasured. A gate with
+no measurement behind it does not pass — silence is not evidence.
+
+`--dry-run` exercises the harness with invented numbers, to check the harness rather than
+the machine. Its output says so on every line that matters.
+
+Each result is committed to `bench/results/`. Every file records the machine it came from
+— architecture, cores, memory, accelerator — so a number from a laptop can never be quoted
+as a number from the target. The numbers in these docs are updated from them, and the
+estimate warnings removed as they are replaced by measurements.

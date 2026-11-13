@@ -48,12 +48,26 @@ acceso congestionado antes de culpar al modelo.
 Ejecutar antes de escribir cualquier otro código. Ver [Hoja de ruta](roadmap.md#m0-benchmark)
 para las condiciones de la puerta.
 
+Los dos runtimes que vale la pena comparar hablan la API de OpenAI, así que hay un solo
+arnés y no dos rutas de código. Arranca uno, mide, arranca el otro y vuelve a medir:
+
+```bash
+# llama.cpp
+llama-server -m model.gguf -c 8192 --port 8080
+
+# o MLX
+mlx_lm.server --model <repo> --port 8080
+```
+
 ```bash
 # en la máquina del núcleo
 git clone https://github.com/vladimir1284/susurro
 cd susurro
-python3 -m venv .venv && .venv/bin/pip install -e ".[bench]"
-.venv/bin/python bench/run.py --out bench/results/$(date +%F)-m4-16gb.json
+python3 -m venv .venv && .venv/bin/pip install -e ".[whisper,openai,dev]"
+.venv/bin/python -m bench.run \
+  --label llama-cpp \
+  --audio samples/entrevista-30s.wav \
+  --server-pid "$(pgrep -f llama-server)"
 ```
 
 Qué reporta:
@@ -62,10 +76,29 @@ Qué reporta:
 |---|---|
 | Factor de tiempo real del STT | Debe quedar bien por debajo de 1,0 o la transcripción se atrasa para siempre |
 | Prefill en frío, 1k / 4k tokens | El coste que la caché de prompt existe para evitar |
-| Prefill caliente, delta de 100 tokens | El coste que realmente se paga por sugerencia |
+| Tiempo hasta el primer token en caliente | El coste que realmente se paga por sugerencia. **La cifra de la que vive el producto.** |
 | Tokens/s de decodificación | Fija cuánto tarda una sugerencia en terminar de llegar |
 | Memoria residente pico | Decide si el supuesto de 8B se sostiene |
 
-Cada resultado se versiona en `bench/results/`. Las cifras de esta documentación se
-actualizan a partir de ellos, y los avisos de estimación se retiran según se van
-reemplazando por mediciones.
+Tres cosas que el arnés exige, porque cada una es una forma fácil de no medir nada:
+
+- **Audio de voz real.** `--audio` es obligatorio. El silencio o un tono le dan al
+  reconocedor menos trabajo que el habla real y producen un factor de tiempo real
+  halagador.
+- **Un prompt distinto por repetición en frío.** Un prefill «en frío» medido contra un
+  servidor con la caché ya caliente no es una medición.
+- **El pid del servidor.** El modelo corre en otro proceso; sin `--server-pid` la cifra de
+  memoria describiría al arnés.
+
+El código de salida es la puerta: `0` si se cumple cada umbral de la
+[Hoja de ruta](roadmap.md#m0-benchmark), `1` si alguno falla o no se midió. Una puerta sin
+medición detrás no pasa: el silencio no es evidencia.
+
+`--dry-run` ejercita el arnés con cifras inventadas, para comprobar el arnés y no la
+máquina. Su salida lo dice en todas las líneas que importan.
+
+Cada resultado se versiona en `bench/results/`. Cada fichero registra la máquina de la que
+salió —arquitectura, núcleos, memoria, acelerador— para que una cifra de un portátil no
+pueda citarse como cifra del objetivo. Las cifras de esta documentación se actualizan a
+partir de ellos, y los avisos de estimación se retiran según se van reemplazando por
+mediciones.
