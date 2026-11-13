@@ -17,7 +17,7 @@ susurro/
 │   ├── session/       # profiles, context assembly, state machine
 │   └── server.py      # WebSocket endpoints + static console
 ├── capture/           # thin client
-│   ├── backends/      # pipewire.py, coreaudio.py
+│   ├── backends/      # file.py (replay), pipewire.py, coreaudio.py
 │   └── main.py
 ├── console/           # static web UI (no build step)
 ├── bench/             # M0 benchmark harness
@@ -64,6 +64,19 @@ with a shared-secret query parameter is not something to expose by accident.
 
 The backend is selected from the platform. `--far` takes a PipeWire node on Linux or a
 CoreAudio device name on macOS; both accept `--list-devices` to find the right one.
+
+With no audio devices to hand — a container, a remote box, CI — replay a pair of WAV files
+instead. They must be 16 kHz mono 16-bit:
+
+```bash
+.venv/bin/python -m capture.main \
+  --core ws://localhost:8723 --token "$SUSURRO_TOKEN" \
+  --replay-mic me.wav --replay-far them.wav
+```
+
+Replay is paced in real time by default, so the core sees the same arrival pattern it
+would see from a device. `--speed 0` replays as fast as the core accepts, which is what
+the tests use.
 
 ## Opening the console
 

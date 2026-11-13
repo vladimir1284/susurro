@@ -57,7 +57,7 @@ LinkedIn draft if there is a lesson worth writing down.
       fake implementations driven by fixtures. Integration test asserting the full event
       sequence from capture frames to console events.
 
-- [ ] **WP3 — Capture client**
+- [x] **WP3 — Capture client**
       `capture/backends/file.py` replaying a WAV in real time (testable here, and useful
       forever for deterministic tests). `capture/backends/pipewire.py` written but
       untested — no audio devices in this container. Opus round-trip tests.
@@ -83,7 +83,7 @@ has no LinkedIn access and will not acquire any. The operator reviews and posts.
 1. Why a copilot that runs on your own machine (context, the slow-uplink problem) — drafted
 2. Two microphones, zero machine learning (the unmixed-lanes decision) — drafted
 3. Prompt caching, explained without jargon — drafted
-4. Why the benchmark comes before the code (gates, and the cost of skipping them)
+4. Building a system you cannot run (fakes, honest labels, measuring your own code) — drafted
 5. Designing a UI you read while keeping eye contact
 6. What building against a 16 GB ceiling forces you to decide
 
@@ -152,3 +152,14 @@ has no LinkedIn access and will not acquire any. The operator reviews and posts.
   `session.start` are dropped rather than buffered, since there is no prefilled cache to
   transcribe into; profile ids are rejected if they could walk out of the profile
   directory. Article 3 drafted, on prompt caching.
+- `2026-11-13` — WP3 done. Capture client: `capture/codec.py` (real Opus via libopus,
+  installed in this container), `capture/backends/file.py` (WAV replay, real-time paced,
+  `speed=0` for tests), `capture/backends/pipewire.py` (**written, never executed** — no
+  `/dev/snd` and no PipeWire daemon here; its module docstring says so and M3 exists to
+  run it), `capture/client.py` and a CLI. 148 tests pass, including an end-to-end path with
+  every component real except the recognizer: WAV, Opus, WebSocket, core, console. Stereo
+  WAVs are downmixed; a trailing partial frame is dropped rather than zero-padded, since
+  padding would put 20 ms of invented silence into a transcript; wrong sample rates are
+  refused with the ffmpeg command that fixes them rather than resampled, because a
+  resampler in the capture path is a quality decision that belongs to the OS audio server.
+  Docs updated with the replay flags. Article 4 drafted.

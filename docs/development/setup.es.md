@@ -17,7 +17,7 @@ susurro/
 │   ├── session/       # perfiles, armado de contexto, máquina de estados
 │   └── server.py      # extremos WebSocket + consola estática
 ├── capture/           # cliente ligero
-│   ├── backends/      # pipewire.py, coreaudio.py
+│   ├── backends/      # file.py (reproducción), pipewire.py, coreaudio.py
 │   └── main.py
 ├── console/           # interfaz web estática (sin paso de build)
 ├── bench/             # arnés del benchmark M0
@@ -67,6 +67,19 @@ consulta no es algo que se exponga por accidente.
 El backend se selecciona según la plataforma. `--far` acepta un nodo de PipeWire en Linux
 o un nombre de dispositivo CoreAudio en macOS; ambos admiten `--list-devices` para
 encontrar el correcto.
+
+Sin dispositivos de audio a mano —un contenedor, una máquina remota, CI— reproduce un par
+de ficheros WAV en su lugar. Tienen que ser 16 kHz mono de 16 bits:
+
+```bash
+.venv/bin/python -m capture.main \
+  --core ws://localhost:8723 --token "$SUSURRO_TOKEN" \
+  --replay-mic yo.wav --replay-far ellos.wav
+```
+
+La reproducción va a tiempo real por defecto, así que el núcleo ve el mismo patrón de
+llegada que vería de un dispositivo. `--speed 0` reproduce tan rápido como el núcleo
+acepte, que es lo que usan los tests.
 
 ## Abrir la consola
 
