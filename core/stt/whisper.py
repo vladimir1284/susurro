@@ -87,6 +87,14 @@ class WhisperRecognizer:
 
     # -- interface ----------------------------------------------------------- #
 
+    def warmup(self) -> None:
+        """Load the weights now rather than on the first frame.
+
+        A first run downloads the model, which takes minutes. Doing that while
+        audio is already arriving stalls everything and looks like a hang.
+        """
+        self.model()
+
     def reset(self) -> None:
         self._lanes = {"mic": _LaneBuffer(), "far": _LaneBuffer()}
         self._elapsed = {"mic": 0.0, "far": 0.0}

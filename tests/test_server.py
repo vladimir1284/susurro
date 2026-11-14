@@ -91,6 +91,23 @@ async def drain(ws: websockets.ClientConnection, kind: str, limit: int = 40) -> 
     raise AssertionError(f"no {kind!r} event in {limit} messages")
 
 
+async def await_phase(
+    ws: websockets.ClientConnection, phase: str, limit: int = 40
+) -> dict:
+    """Wait for a specific session phase.
+
+    More than one `state` arrives around session.start: the core announces
+    that the speech model is loading before it announces that the session is
+    live, so that a first run -- which downloads the model -- does not look
+    like a hang.
+    """
+    for _ in range(limit):
+        event = await recv_json(ws)
+        if event["type"] == "state" and event["session"] == phase:
+            return event
+    raise AssertionError(f"session never reached {phase!r} in {limit} messages")
+
+
 async def open_console(url: str) -> websockets.ClientConnection:
     ws = await websockets.connect(f"{url}/console?token={TOKEN}")
     # A console is greeted with the profiles it can choose from, then the
@@ -113,7 +130,7 @@ async def go_live(console: websockets.ClientConnection, profile: str, language: 
     )
     await drain(console, "state")
     await console.send(json.dumps({"type": "session.start"}))
-    assert (await drain(console, "state"))["session"] == "live"
+    await await_phase(console, "live")
 
 
 class TestAuthorization:
@@ -420,7 +437,7 @@ class TestHints:
         await go_live(console, "en-technical-backend", "en", "conversational")
         core.transcript.append("them: something")
         await console.send(json.dumps({"type": "session.stop"}))
-        assert (await drain(console, "state"))["session"] == "configured"
+        await await_phase(console, "configured")
         assert core.transcript == []
         await console.close()
 
@@ -656,7 +673,7 @@ class TestSessionRecording:
             Line(lane="far", text="Why did you leave?", t=1.0, dur=2.0, seq=1)
         )
         await console.send(json.dumps({"type": "session.stop"}))
-        await drain(console, "state")
+        await await_phase(console, "configured")
         assert len(recorded.list_sessions()) == 1
         await console.close()
 
@@ -668,7 +685,7 @@ class TestSessionRecording:
         console = await open_console(url)
         await go_live(console, "en-technical-backend", "en", "technical")
         await console.send(json.dumps({"type": "session.stop"}))
-        await drain(console, "state")
+        await await_phase(console, "configured")
         assert recorded.list_sessions() == []
         await console.close()
 
@@ -682,7 +699,7 @@ class TestSessionRecording:
         )
         await drain(console, "hint.end")
         await console.send(json.dumps({"type": "session.stop"}))
-        await drain(console, "state")
+        await await_phase(console, "configured")
 
         session_id = recorded.list_sessions()[0]["session_id"]
         hints = recorded.load(session_id).hints
@@ -701,7 +718,7 @@ class TestSessionRecording:
         )
         await drain(console, "hint.end")
         await console.send(json.dumps({"type": "session.stop"}))
-        await drain(console, "state")
+        await await_phase(console, "configured")
 
         session_id = recorded.list_sessions()[0]["session_id"]
         await console.send(
@@ -816,7 +833,7 @@ class TestLatencyMeasurement:
         )
         await drain(console, "hint.end")
         await console.send(json.dumps({"type": "session.stop"}))
-        await drain(console, "state")
+        await await_phase(console, "configured")
 
         session_id = core.history.list_sessions()[0]["session_id"]
         recorded = core.history.load(session_id).hints[0]
@@ -837,4 +854,127 @@ class TestLatencyMeasurement:
         # not accumulate a hundred timers.
         assert core._hint_started == {}
         assert core._hint_ttft == {}
+        await console.close()
+
+
+class TestRecognizerOffTheEventLoop:
+    """Whisper takes hundreds of milliseconds per pass.
+
+    Run inline, that stalls audio ingestion and the console with it. The fake
+    recognizer is instant, which is exactly why no test caught this until the
+    question was asked directly.
+    """
+
+    async def test_a_slow_recognizer_does_not_block_the_console(
+        self, url: str, core: Core
+    ) -> None:
+        import time as _time
+
+        from capture.codec import OpusEncoder
+
+        class SlowRecognizer:
+            language = "en"
+            calls = 0
+
+            def warmup(self) -> None: ...
+
+            def reset(self) -> None: ...
+
+            def feed(self, lane, timestamp_us, pcm):
+                SlowRecognizer.calls += 1
+                _time.sleep(0.05)  # a tenth of a real whisper pass
+                return []
+
+            def flush(self, lane):
+                return []
+
+        core.recognizer = SlowRecognizer()
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+
+        async with websockets.connect(f"{url}/capture?token={TOKEN}") as capture:
+            await capture.send(
+                p.Hello(session_id="s", lane="far", client="test/0.1").to_json()
+            )
+            await capture.recv()
+            encoder = OpusEncoder()
+            for index in range(4):
+                await capture.send(opus_frame(encoder, index))
+
+            # The console answers while recognition is still working. Inline,
+            # this would wait for every frame to finish first.
+            started = _time.perf_counter()
+            await console.send(json.dumps({"type": "profiles.request"}))
+            assert (await drain(console, "profiles"))["type"] == "profiles"
+            assert _time.perf_counter() - started < 0.15
+
+        await console.close()
+
+    async def test_the_model_is_loaded_before_the_session_goes_live(
+        self, url: str, core: Core
+    ) -> None:
+        # A first run downloads the model, which takes minutes. Doing that
+        # once audio is arriving looks exactly like a hang.
+        order: list[str] = []
+
+        class RecordingRecognizer:
+            language = "en"
+
+            def warmup(self) -> None:
+                order.append("warmup")
+
+            def reset(self) -> None:
+                order.append("reset")
+
+            def feed(self, lane, timestamp_us, pcm):
+                order.append("feed")
+                return []
+
+            def flush(self, lane):
+                return []
+
+        core.recognizer = RecordingRecognizer()
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        assert order[0] == "warmup"
+        await console.close()
+
+    async def test_the_console_is_told_while_the_model_loads(
+        self, url: str, core: Core
+    ) -> None:
+        class SlowToLoad:
+            language = "en"
+
+            def warmup(self) -> None:
+                import time as _time
+
+                _time.sleep(0.05)
+
+            def reset(self) -> None: ...
+
+            def feed(self, lane, timestamp_us, pcm):
+                return []
+
+            def flush(self, lane):
+                return []
+
+        core.recognizer = SlowToLoad()
+        console = await open_console(url)
+        await console.send(
+            json.dumps(
+                {
+                    "type": "session.config",
+                    "profile_id": "en-technical-backend",
+                    "language": "en",
+                    "mode": "conversational",
+                }
+            )
+        )
+        await drain(console, "state")
+        await console.send(json.dumps({"type": "session.start"}))
+
+        loading = await drain(console, "state")
+        assert loading["stt"] == "loading"
+        live = await await_phase(console, "live")
+        assert live["stt"] == "ready"
         await console.close()

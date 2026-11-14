@@ -79,8 +79,9 @@ apagado por defecto a propósito.
 .venv/bin/python -m core.main --config core.toml
 ```
 
-La primera ejecución descarga el modelo de voz, lo que tarda unos minutos sin decir nada
-mientras lo hace. Es normal.
+La primera ejecución descarga el modelo de voz, lo que tarda unos minutos. Ocurre al pulsar
+**Start**, y la consola muestra la sesión como cargando hasta que termina: es normal, no un
+cuelgue.
 
 ## 4. Captura el audio
 

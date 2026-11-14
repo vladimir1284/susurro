@@ -42,6 +42,9 @@ class ScriptedRecognizer:
     def __post_init__(self) -> None:
         self.reset()
 
+    def warmup(self) -> None:
+        """Nothing to load. The point of this backend is that there is not."""
+
     def reset(self) -> None:
         self._position = {"mic": 0, "far": 0}
         self._frames_seen = {"mic": 0, "far": 0}

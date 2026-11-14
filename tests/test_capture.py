@@ -222,7 +222,10 @@ class TestClient:
         )
         await console.recv()
         await console.send(json.dumps({"type": "session.start"}))
-        await console.recv()
+        for _ in range(10):
+            event = json.loads(await console.recv())
+            if event.get("type") == "state" and event.get("session") == "live":
+                break
 
         await stream_lane(url, TOKEN, "s-1", "far", WavSource(wav, speed=0))
 

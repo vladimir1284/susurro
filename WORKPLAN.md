@@ -76,6 +76,10 @@ LinkedIn draft if there is a lesson worth writing down.
 
 ### Added after WP9, once every queued package was done
 
+- [x] **WP17 — Get recognition off the event loop**
+      A defect the fakes hid completely, and one that would have shown up on the Mac mini
+      as a hang.
+
 - [x] **WP16 — Measure time to first token in the live system**
       It was in the protocol, the console and the recordings. Nothing produced it.
 
@@ -466,3 +470,20 @@ machine with audio devices.
   relative link went in. `roadmap.md` from a page in `docs/architecture/` needs `../`. The
   strict build caught it immediately — one second later than it should have. Checks belong
   before the commit in the same chain, not beside it.
+- `2026-11-13` — WP17 done. **The recognizer was running on the server's event loop.** A
+  whisper pass takes hundreds of milliseconds; inline, that stalls audio ingestion and the
+  console with it, so frames queue behind the recognizer and the whole thing looks frozen
+  while it works. Worse, the model loads lazily on the first frame — and a first run
+  *downloads* it, which takes minutes with audio already arriving. On the Mac mini this
+  would have presented as a hang on the very first session, with nothing in the logs.
+  `feed` and `flush` now run on a worker thread, serialized by a lock: a model is not safe
+  to call from two threads at once, and serializing keeps the lanes' segments in order.
+  `warmup()` is new on the recognizer interface and loads the weights at `session.start`
+  before anything reports the session live, with the core reporting `stt: "loading"`
+  meanwhile so the console can say so rather than appear dead.
+  **No test caught this, and the reason matters: the scripted recognizer returns
+  instantly.** A fake faster than the real thing hides exactly this class of bug. The new
+  tests use a deliberately slow stand-in and assert the console still answers while
+  recognition works. That lesson is now written into `docs/architecture/audio.md`, where
+  the next person writing a backend will see it.
+  419 tests pass. Checks ran before the commit this time.

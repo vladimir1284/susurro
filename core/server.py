@@ -91,6 +91,12 @@ class Core:
     #: stated in it -- and until now nothing measured it.
     _hint_started: dict[str, float] = field(default_factory=dict, init=False)
     _hint_ttft: dict[str, int] = field(default_factory=dict, init=False)
+    #: Recognition runs on a worker thread, and one at a time. Whisper takes
+    #: hundreds of milliseconds per pass -- on the event loop that stalls audio
+    #: ingestion and the console with it -- and a model is not safe to call
+    #: from two threads at once.
+    _recognizer_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
+    _stt_status: str = field(default="ready", init=False)
     _hint_text: dict[str, str] = field(default_factory=dict, init=False)
 
     # -- auth --------------------------------------------------------------- #
@@ -152,7 +158,7 @@ class Core:
     def state_event(self) -> str:
         return p.state(
             session=self.state.phase.value,
-            stt="ready",
+            stt=self._stt_status,
             llm="ready",
             lanes=dict(self.state.lanes),
         )
@@ -206,17 +212,29 @@ class Core:
                     # One corrupt packet is not worth dropping the lane for.
                     await connection.send(p.error(exc.code, str(exc)))
                     continue
-                for segment in self.recognizer.feed(lane, frame.timestamp_us, pcm):
+                for segment in await self.recognize(lane, frame.timestamp_us, pcm):
                     await self.emit_segment(segment)
                 await self.observe_voice(lane, pcm)
         except websockets.exceptions.ConnectionClosed:
             pass
         finally:
-            for segment in self.recognizer.flush(lane):
+            for segment in await self.flush_lane(lane):
                 await self.emit_segment(segment)
             self.state.lane_down(lane)
             await self.broadcast(self.state_event())
             log.info("lane %s disconnected", lane)
+
+    async def recognize(
+        self, lane: p.Lane, timestamp_us: int, pcm: bytes
+    ) -> list[Segment]:
+        async with self._recognizer_lock:
+            return await asyncio.to_thread(
+                self.recognizer.feed, lane, timestamp_us, pcm
+            )
+
+    async def flush_lane(self, lane: p.Lane) -> list[Segment]:
+        async with self._recognizer_lock:
+            return await asyncio.to_thread(self.recognizer.flush, lane)
 
     async def emit_segment(self, segment: Segment) -> None:
         if segment.final:
@@ -403,6 +421,18 @@ class Core:
             raise TransitionError("session.config must arrive before session.start")
         assert self.state.profile_id is not None
         profile = self.profiles.load(self.state.profile_id)
+
+        # Load the speech model before anything says the session is live. A
+        # first run downloads it, which takes minutes; doing that once audio is
+        # arriving stalls the server and looks exactly like a hang.
+        self._stt_status = "loading"
+        await self.broadcast(self.state_event())
+        try:
+            async with self._recognizer_lock:
+                await asyncio.to_thread(self.recognizer.warmup)
+        finally:
+            self._stt_status = "ready"
+
         self.state.start()
         self.transcript.clear()
         self._hint_text.clear()
@@ -458,7 +488,7 @@ class Core:
         """
         if not self.state.accepts_audio or self.state.active_hint is not None:
             return
-        for segment in self.recognizer.flush("far"):
+        for segment in await self.flush_lane("far"):
             await self.emit_segment(segment)
         if not self.transcript:
             return

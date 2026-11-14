@@ -58,4 +58,13 @@ class Recognizer(Protocol):
         """Close any open segment on a lane, e.g. when its client disconnects."""
         ...
 
+    def warmup(self) -> None:
+        """Load whatever is expensive, before audio starts arriving.
+
+        Called once per session, off the event loop. Without it the first
+        frame pays for loading the model -- minutes on a first run, while the
+        download happens -- and the whole server is unresponsive for it.
+        """
+        ...
+
     def reset(self) -> None: ...

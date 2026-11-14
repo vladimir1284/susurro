@@ -75,8 +75,9 @@ default deliberately.
 .venv/bin/python -m core.main --config core.toml
 ```
 
-The first run downloads the speech model, which takes a few minutes and says nothing while
-it does. That is normal.
+The first run downloads the speech model, which takes a few minutes. It happens when you
+press **Start**, and the console shows the session as loading until it finishes — that is
+normal, not a hang.
 
 ## 4. Capture audio
 

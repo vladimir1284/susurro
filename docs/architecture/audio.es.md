@@ -100,6 +100,25 @@ fragmento. La ventana avanza aproximadamente cada segundo y vuelve a decodificar
 región solapada, de modo que una palabra partida en la frontera se ve entera en la pasada
 siguiente.
 
+### El reconocimiento corre fuera del bucle de eventos
+
+Una pasada de transcripción tarda cientos de milisegundos. Ejecutada en línea sobre el
+bucle de eventos del servidor, bloquea la ingesta de audio y con ella la consola: las
+tramas se acumulan detrás del reconocedor y todo parece congelado mientras trabaja.
+
+Por eso `Recognizer.feed` y `flush` se llaman en un hilo de trabajo, serializados por un
+cerrojo: un modelo no es seguro de llamar desde dos hilos a la vez, y serializar también
+mantiene en orden los segmentos de los dos carriles.
+
+`warmup()` carga los pesos una vez en `session.start`, antes de que nada informe de que la
+sesión está en vivo. La primera ejecución descarga el modelo, lo que tarda minutos; hacerlo
+con el audio ya llegando es indistinguible de un cuelgue. Mientras ocurre, el núcleo
+informa `stt: "loading"` en su estado para que la consola pueda decirlo.
+
+Esto estuvo mal un tiempo y ningún test lo detectó, porque el reconocedor con guion que usan
+los tests devuelve al instante. Un fake más rápido que lo real esconde justo esta clase de
+error.
+
 Cada carril produce dos tipos de salida:
 
 - `transcript.partial` — la mejor conjetura actual, reemplazada en cada pasada, dibujada

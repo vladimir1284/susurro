@@ -257,8 +257,12 @@ async def open_console(url: str) -> websockets.ClientConnection:
     )
     await ws.recv()
     await ws.send(json.dumps({"type": "session.start"}))
-    await ws.recv()
-    return ws
+    # More than one state event arrives: loading, then live.
+    for _ in range(10):
+        event = json.loads(await ws.recv())
+        if event["type"] == "state" and event["session"] == "live":
+            return ws
+    raise AssertionError("session never went live")
 
 
 async def drain(ws: websockets.ClientConnection, kind: str, limit: int = 60) -> dict:

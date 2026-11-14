@@ -97,6 +97,25 @@ chunks that contain only silence or a fragment. The window advances roughly ever
 and re-decodes an overlapping region, so a word split across the boundary is still seen
 whole in the next pass.
 
+### Recognition runs off the event loop
+
+A transcription pass takes hundreds of milliseconds. Run inline on the server's event
+loop, that stalls audio ingestion and the console along with it — frames queue up behind
+the recognizer and the whole thing looks frozen while it works.
+
+So `Recognizer.feed` and `flush` are called on a worker thread, serialized by a lock: a
+model is not safe to call from two threads at once, and serializing also keeps the two
+lanes' segments in order.
+
+`warmup()` loads the weights once at `session.start`, before anything reports the session
+live. A first run downloads the model, which takes minutes; doing that once audio is
+already arriving is indistinguishable from a hang. While it happens the core reports
+`stt: "loading"` in its state, so the console can say so.
+
+This was wrong for a while and no test caught it, because the scripted recognizer used in
+tests returns instantly. A fake that is faster than the real thing hides exactly this
+class of bug.
+
 Each lane produces two kinds of output:
 
 - `transcript.partial` — the current best guess, replaced on every pass, rendered greyed
