@@ -68,7 +68,8 @@ python3 -m venv .venv
 .venv/bin/python -m core.main --profiles tests/fixtures/profiles
 ```
 
-For the real thing, see [`docs/development/setup.md`](docs/development/setup.md).
+For the real thing — models, audio capture, a phone as the console — see
+[`docs/guides/getting-started.md`](docs/guides/getting-started.md).
 
 ## Scope
 

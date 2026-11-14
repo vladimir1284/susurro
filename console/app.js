@@ -22,6 +22,7 @@ const el = {
   hint: document.getElementById("hint-button"),
   stop: document.getElementById("stop"),
   edit: document.getElementById("edit"),
+  new: document.getElementById("new"),
   editor: document.getElementById("editor"),
   editorLabel: document.getElementById("editor-label"),
   editorLanguage: document.getElementById("editor-language"),
@@ -106,6 +107,9 @@ function render() {
 
   el.profile.disabled = isLive(state) || state.profiles.length === 0;
   el.edit.disabled = !selectedProfile();
+  // "New" stays available always, including on a fresh install with no
+  // profiles at all -- which is the only way to make the first one.
+  el.new.disabled = isLive(state);
   el.start.disabled = isLive(state) || !selectedProfile();
   el.stop.disabled = !isLive(state);
   el.hint.disabled = !isLive(state);
@@ -149,6 +153,20 @@ function renderProfiles() {
 
 function selectedProfile() {
   return state.profiles.find((p) => p.id === el.profile.value) ?? null;
+}
+
+//: A profile that exists only in the editor until it is saved. Without this
+//: there is no way to make the first one: Edit needs something selected, and
+//: on a fresh install nothing is.
+function blankProfile() {
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+  return {
+    id: `profile-${stamp}`,
+    label: "New profile",
+    language: LANGUAGE,
+    mode: MODE || "conversational",
+    context: { resume: "", role: "", notes: "" },
+  };
 }
 
 const EDITOR_FIELDS = [
@@ -351,6 +369,18 @@ el.edit.addEventListener("click", () => {
   pendingProfileId = profile.id;
   send({ type: "profile.request", profile_id: profile.id });
   render();
+});
+
+el.new.addEventListener("click", () => {
+  const draft = blankProfile();
+  editorOpen = true;
+  loadedProfile = null;
+  pendingProfileId = draft.id;
+  // Nothing is sent: the profile does not exist on the core until Save. The
+  // editor is filled from the draft directly.
+  state = { ...state, editing: draft };
+  render();
+  el.editorLabel.focus();
 });
 
 el.editorClose.addEventListener("click", () => {

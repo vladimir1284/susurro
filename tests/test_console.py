@@ -763,3 +763,35 @@ class TestHistoryViewModel:
         events = [{"type": "export", "session_id": "a", "markdown": "# Session a"}]
         assert run_js("return state.export.markdown", events) == "# Session a"
         assert run_js("return state.export.sessionId", events) == "a"
+
+
+class TestFirstProfile:
+    def test_a_profile_can_be_created_with_none_on_disk(
+        self, page: Page, empty_console
+    ) -> None:
+        # The bootstrap case, found by writing the installation guide: Edit
+        # needs something selected, and on a fresh install nothing is. Without
+        # New there is no way to make the first profile from the console.
+        url, core = empty_console
+        page.goto(f"{url}/?token={TOKEN}")
+        expect(page.locator("#start")).to_be_disabled()
+        expect(page.locator("#new")).to_be_enabled()
+
+        page.locator("#new").click()
+        expect(page.locator("#editor-label")).to_be_enabled()
+        page.fill("#editor-label", "My first role")
+        page.fill("#editor-resume", "Fifteen years of backend work.")
+        page.locator("#editor-save").click()
+
+        expect(page.locator("#editor-status")).to_have_text("saved")
+        expect(page.locator("#profile option")).to_have_count(1)
+        expect(page.locator("#start")).to_be_enabled()
+        assert core.profiles.list_ids()
+
+    def test_new_is_unavailable_while_live(self, page: Page, live_console) -> None:
+        url, _ = live_console
+        page.goto(f"{url}/?token={TOKEN}")
+        expect(page.locator("#start")).to_be_enabled()
+        page.locator("#start").click()
+        expect(page.locator("#session-pill")).to_have_text("live")
+        expect(page.locator("#new")).to_be_disabled()

@@ -78,11 +78,13 @@ plugins:
             Protocol: Protocolo
             Roadmap: Hoja de ruta
             Hardware: Hardware
+            Getting started: Primeros pasos
             Setup: Puesta en marcha
             Documentation: Documentación
 
 nav:
   - Susurro: index.md
+  - Getting started: guides/getting-started.md
   - Architecture:
       - Overview: architecture/overview.md
       - Audio pipeline: architecture/audio.md

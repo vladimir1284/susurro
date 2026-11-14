@@ -76,6 +76,9 @@ LinkedIn draft if there is a lesson worth writing down.
 
 ### Added after WP9, once every queued package was done
 
+- [x] **WP15 — M6: setup documentation for someone who did not build this**
+      Plus the bootstrap bug that writing it exposed.
+
 - [x] **WP14 — M6: the console side of history**
       List, open, download and delete recorded sessions, and show when recording is on.
 
@@ -124,6 +127,7 @@ has no LinkedIn access and will not acquire any. The operator reviews and posts.
 6. The interface decides whether the feature is fast (prefill/stream, decode placement) — drafted
 7. Writing the benchmark before the feature (gates in code, ways to measure nothing) — drafted
 8. Answering before the question ends (speculative hints, hysteresis, the flush bug) — drafted
+9. The feature I shipped switched off (defaults as the product, deletion as a feature) — drafted
 
 ## Rules for the unattended session
 
@@ -420,3 +424,18 @@ machine with audio devices.
   With recording off, the empty state says *why* and names the setting that turns it on,
   rather than showing a blank list that looks like a bug.
   403 tests pass.
+- `2026-11-13` — WP15 done. `docs/guides/getting-started.md` and its Spanish twin: a real
+  end-to-end install, both languages, starting with "try it with no models at all" because
+  that takes two minutes and turns a later failure into a model problem rather than a
+  mystery. It ends with a troubleshooting table of the eight things most likely to go
+  wrong, each naming the cause rather than a ritual to try.
+  **Writing it exposed a bootstrap bug.** The guide reached "now make a profile" and there
+  was no way to: the console's Edit button needs a profile selected, and on a fresh install
+  nothing is. A new user would have had to hand-write JSON before the console was usable at
+  all. There is now a New button that opens the editor on a draft which does not exist on
+  the core until Save, available even with nothing on disk. Two tests cover it, including
+  the empty-install case.
+  This is the second time documentation found a defect the tests did not. Writing
+  instructions forces the order a stranger would do things in, and the tests were all
+  written by someone who already had profiles.
+  Article 9 drafted, on shipping the recording feature switched off. 405 tests pass.
