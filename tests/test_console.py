@@ -913,3 +913,45 @@ class TestLostConnection:
         expect(page.locator("#link-pill")).to_be_visible()
         expect(page.locator("#start")).to_be_disabled()
         expect(page.locator("#hint-button")).to_be_disabled()
+
+
+class TestModelStatusIndicator:
+    def test_an_unavailable_model_is_shown(self, page: Page, live_console) -> None:
+        # Without it, pressing Hint does nothing visible and the user presses
+        # it again.
+        url, _ = live_console
+        page.goto(url)
+        result = page.evaluate(
+            """async () => {
+                const m = await import('./state.js');
+                let s = m.initial();
+                s = m.apply(s, {type: 'state', session: 'live', stt: 'ready',
+                                llm: 'unavailable', lanes: {mic: 'up', far: 'up'}});
+                return [s.llm, s.stt];
+            }"""
+        )
+        assert result == ["unavailable", "ready"]
+
+    def test_the_loading_state_is_carried(self, page: Page, live_console) -> None:
+        url, _ = live_console
+        page.goto(url)
+        result = page.evaluate(
+            """async () => {
+                const m = await import('./state.js');
+                let s = m.initial();
+                s = m.apply(s, {type: 'state', session: 'configured', stt: 'loading',
+                                llm: 'unknown', lanes: {mic: 'down', far: 'down'}});
+                return s.stt;
+            }"""
+        )
+        assert result == "loading"
+
+    def test_nothing_is_shown_when_both_are_fine(
+        self, page: Page, live_console
+    ) -> None:
+        url, _ = live_console
+        page.goto(f"{url}/?token={TOKEN}")
+        expect(page.locator("#start")).to_be_enabled()
+        page.locator("#start").click()
+        expect(page.locator("#session-pill")).to_have_text("live")
+        expect(page.locator("#model-pill")).to_be_hidden()

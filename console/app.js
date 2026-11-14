@@ -36,6 +36,7 @@ const el = {
   recordingPill: document.getElementById("recording-pill"),
   latencyPill: document.getElementById("latency-pill"),
   linkPill: document.getElementById("link-pill"),
+  modelPill: document.getElementById("model-pill"),
   history: document.getElementById("history"),
   historyPanel: document.getElementById("history-panel"),
   historyList: document.getElementById("history-list"),
@@ -116,6 +117,7 @@ function render() {
   renderHint();
 
   el.linkPill.hidden = state.connected;
+  renderModels();
   // Nothing can be sent while the socket is down, so nothing offers to.
   el.profile.disabled =
     !state.connected || isLive(state) || state.profiles.length === 0;
@@ -191,6 +193,25 @@ const EDITOR_FIELDS = [
 //: during a call is the only way to know a session is inside it, rather than
 //: finding out afterwards that every hint arrived too late to read.
 const LATENCY_BUDGET_MS = 1000;
+
+//: Hints fail silently from the user's point of view when the model server is
+//: down -- the button works, nothing appears. Saying so beats letting them
+//: press it again.
+function renderModels() {
+  if (state.stt === "loading") {
+    el.modelPill.hidden = false;
+    el.modelPill.dataset.state = "loading";
+    el.modelPill.textContent = "loading speech model…";
+    return;
+  }
+  if (state.llm === "unavailable") {
+    el.modelPill.hidden = false;
+    el.modelPill.dataset.state = "unavailable";
+    el.modelPill.textContent = "no model server";
+    return;
+  }
+  el.modelPill.hidden = true;
+}
 
 function renderLatency() {
   const median = medianLatency(state);

@@ -143,16 +143,30 @@ class TestRequests:
         assert PREAMBLE in seen[0]["messages"][0]["content"]
         assert generator.prefill_count == 1
 
-    async def test_a_failed_prefill_is_not_fatal(self) -> None:
-        # The warm-up only moves cost around. Losing it must not stop a session
-        # from starting.
+    async def test_a_failed_prefill_is_raised_not_swallowed(self) -> None:
+        # Whether a dead model server should stop a session is the server's
+        # decision, not this backend's. Swallowing it here meant a session
+        # started happily with nothing behind it and the user found out in the
+        # middle of a call.
         def handler(request: httpx.Request) -> httpx.Response:
             raise httpx.ConnectError("no server", request=request)
 
         generator = generator_with(handler)
-        await generator.prefill(PREAMBLE)
+        with pytest.raises(httpx.HTTPError):
+            await generator.prefill(PREAMBLE)
         await generator.aclose()
+        # The preamble is still remembered: the server may come back, and the
+        # next hint should use the right context when it does.
         assert generator.preamble == PREAMBLE
+
+    async def test_a_prefill_rejected_by_the_server_is_raised(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, text="model loading")
+
+        generator = generator_with(handler)
+        with pytest.raises(httpx.HTTPStatusError):
+            await generator.prefill(PREAMBLE)
+        await generator.aclose()
 
     async def test_stream_yields_each_chunk(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:

@@ -147,6 +147,12 @@ edited mid-session.
     profile store — but that is containment, not authentication. See
     [Overview](overview.md#network-assumptions).
 
+`state` reports what the two models are actually doing. `stt` is `loading` while weights
+are being read — a first run downloads them, which takes minutes — and `ready` afterwards.
+`llm` is `unknown` until something has spoken to the model server, then `ready` or
+`unavailable` depending on whether it answered. Both said `ready` unconditionally until a
+session was started against a server that was not running.
+
 A console is greeted with `profiles` before `state`, so it can offer a choice rather than
 requiring the id to be known in advance. `profiles.request` asks for the listing again. A
 profile whose file is unreadable is left out and logged: one bad file must not leave the
@@ -172,6 +178,7 @@ the suite.
 | `lane_busy` | Something is already connected on that lane. |
 | `bad_transition` | A command arrived in a session phase that does not allow it — a hint with no live session, `session.config` while live. |
 | `bad_request` | A profile is missing, invalid, or disagrees with the `session.config` that named it. |
+| `llm_unavailable` | The model server did not answer when the session started. Transcription still works; hints will not until it is back. |
 | `stt_failed` | A recognition pass raised. The lane stays up: a transcription hiccup must not become a dead microphone for the rest of a call. |
 | `history_failed` | Recording is disabled, or a recorded session is missing or unreadable. |
 | `hint_failed` | Generation raised. The matching `hint.end` carries `reason: "error"`. |

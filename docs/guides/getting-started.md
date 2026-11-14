@@ -133,6 +133,8 @@ press **Space**.
 |---|---|
 | Console will not connect | Token mismatch, or the core bound to loopback and you are on another machine. It refuses `0.0.0.0` without `--allow-public-bind`. |
 | A lane never turns green | The capture client exited, or is retrying. Run it in the foreground and read its log. |
+| The console header says `no model server` | The core started a session and the model server did not answer. Transcription works; hints will not until it is back. |
+| The console header says `loading speech model…` | First run, downloading weights. Minutes, then it goes away. |
 | The console header says `reconnecting…` | The core is unreachable. Every control is disabled until the socket is back. |
 | `lane_busy` | Something is already connected on that lane — usually a capture client you forgot to stop. |
 | Transcript is empty but lanes are up | Wrong `far` device: you are capturing silence. `--list-devices` and try the other monitor. |

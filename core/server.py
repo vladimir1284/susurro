@@ -114,6 +114,10 @@ class Core:
     #: from two threads at once.
     _recognizer_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
     _stt_status: str = field(default="ready", init=False)
+    #: Whether the model server answered the last time anything asked it.
+    #: Reported in `state`, which said "ready" unconditionally until a session
+    #: was started against a model server that was not running.
+    _llm_status: str = field(default="unknown", init=False)
     _hint_text: dict[str, str] = field(default_factory=dict, init=False)
 
     # -- auth --------------------------------------------------------------- #
@@ -176,7 +180,7 @@ class Core:
         return p.state(
             session=self.state.phase.value,
             stt=self._stt_status,
-            llm="ready",
+            llm=self._llm_status,
             lanes=dict(self.state.lanes),
         )
 
@@ -487,7 +491,25 @@ class Core:
             detector.reset()
         # Once per session, not once per hint. This is the whole latency
         # argument in one line.
-        await self.generator.prefill(profile.preamble())
+        #
+        # It is also the first thing that talks to the model server, so it is
+        # the earliest a dead one can be noticed. A failure does not stop the
+        # session -- the audio path is still worth having, and the server may
+        # come back -- but it is reported rather than left for the user to
+        # discover mid-call.
+        try:
+            await self.generator.prefill(profile.preamble())
+            self._llm_status = "ready"
+        except Exception as exc:  # noqa: BLE001 - surfaced to the console
+            self._llm_status = "unavailable"
+            log.warning("the model server did not answer: %s", exc)
+            await self.broadcast(
+                p.error(
+                    "llm_unavailable",
+                    f"the model server did not answer: {exc}. Transcription will "
+                    f"work; hints will not until it is back.",
+                )
+            )
 
     # -- voice activity -------------------------------------------------------- #
 
@@ -589,6 +611,7 @@ class Core:
             raise
         except Exception as exc:  # noqa: BLE001 - surfaced to the console
             log.exception("hint %s failed", hint_id)
+            self._llm_status = "unavailable"
             self.state.end_hint(hint_id)
             # Whatever was written before it failed is still recorded: a hint
             # that stopped halfway is evidence about the model, not nothing.
@@ -601,6 +624,7 @@ class Core:
             await self.broadcast(p.error("hint_failed", str(exc)))
             return
         if self.state.end_hint(hint_id):
+            self._llm_status = "ready"
             ttft_ms = self._hint_ttft.get(hint_id)
             self.record_hint(hint_id, mode, "complete", tokens=tokens, ttft_ms=ttft_ms)
             self._hint_trigger = None

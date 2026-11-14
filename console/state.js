@@ -15,6 +15,9 @@ export const EMPTY = Object.freeze({
   // requiring the id to be known in advance.
   profiles: [],
   lanes: { mic: "down", far: "down" },
+  // What the two models are actually doing, as the core reports it.
+  stt: "ready",
+  llm: "unknown",
   // Committed transcript, oldest first. Never revised.
   lines: [],
   // One open partial per lane, or null. Replaced on every recognizer pass.
@@ -51,6 +54,8 @@ export function apply(state, event) {
         ...state,
         session: event.session,
         lanes: { ...event.lanes },
+        stt: event.stt,
+        llm: event.llm,
         // Leaving a live session clears what was said. The transcript belongs
         // to the session, and showing the last one behind the next is worse
         // than showing nothing.

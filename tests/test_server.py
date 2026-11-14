@@ -1104,3 +1104,94 @@ class TestWhenTheBackendsMisbehave:
         )
         assert (await drain(console, "hint.end"))["reason"] == "complete"
         await console.close()
+
+
+class TestModelServerStatus:
+    """`state` reported llm: "ready" unconditionally, including when nothing
+    was listening. The same defect ttft_ms had: a field that never reflects
+    anything is worse than a missing one."""
+
+    class DeadGenerator:
+        prefill_count = 0
+        prefilled = None
+        contexts: list = []
+
+        async def prefill(self, preamble: str) -> None:
+            raise ConnectionError("connection refused")
+
+        async def stream(self, context):
+            raise ConnectionError("connection refused")
+            yield ""  # pragma: no cover - unreachable, satisfies the type
+
+    async def test_an_unreachable_model_is_reported_at_session_start(
+        self, url: str, core: Core
+    ) -> None:
+        # Not in the middle of a call, which is when the first hint would
+        # otherwise have discovered it.
+        core.generator = self.DeadGenerator()
+        console = await open_console(url)
+        await console.send(
+            json.dumps(
+                {
+                    "type": "session.config",
+                    "profile_id": "en-technical-backend",
+                    "language": "en",
+                    "mode": "conversational",
+                }
+            )
+        )
+        await drain(console, "state")
+        await console.send(json.dumps({"type": "session.start"}))
+
+        error = await drain(console, "error")
+        assert error["code"] == "llm_unavailable"
+        assert "Transcription will work" in error["detail"]
+        await console.close()
+
+    async def test_the_session_still_starts_without_a_model(
+        self, url: str, core: Core
+    ) -> None:
+        # The audio path is still worth having, and the server may come back.
+        core.generator = self.DeadGenerator()
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        assert core.state.phase.value == "live"
+        await console.close()
+
+    async def test_the_state_says_unavailable(self, url: str, core: Core) -> None:
+        core.generator = self.DeadGenerator()
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await console.send(json.dumps({"type": "profiles.request"}))
+        await drain(console, "profiles")
+        await console.send(json.dumps({"type": "session.stop"}))
+        state = await await_phase(console, "configured")
+        assert state["llm"] == "unavailable"
+        await console.close()
+
+    async def test_a_working_model_reports_ready(self, url: str, core: Core) -> None:
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await console.send(json.dumps({"type": "session.stop"}))
+        assert (await await_phase(console, "configured"))["llm"] == "ready"
+        await console.close()
+
+    async def test_status_is_unknown_before_anything_asks(self, core: Core) -> None:
+        # Honest about not knowing, rather than claiming readiness it has no
+        # evidence for.
+        assert json.loads(core.state_event())["llm"] == "unknown"
+
+    async def test_a_failed_hint_marks_the_model_unavailable(
+        self, url: str, core: Core
+    ) -> None:
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        core.generator.fail_after_chunks = 0
+        await console.send(
+            json.dumps({"type": "hint.request", "mode": "conversational"})
+        )
+        await drain(console, "hint.end")
+        await drain(console, "error")
+        await console.send(json.dumps({"type": "session.stop"}))
+        assert (await await_phase(console, "configured"))["llm"] == "unavailable"
+        await console.close()

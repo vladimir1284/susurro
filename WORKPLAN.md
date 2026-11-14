@@ -76,6 +76,9 @@ LinkedIn draft if there is a lesson worth writing down.
 
 ### Added after WP9, once every queued package was done
 
+- [x] **WP20 — Report what the models are actually doing**
+      `state` claimed `llm: "ready"` unconditionally, including with nothing listening.
+
 - [x] **WP19 — The same question, asked of the network**
       In tests the socket always works and the core never restarts. In a meeting neither
       is true.
@@ -530,3 +533,19 @@ machine with audio devices.
   every control stayed enabled, and a press did nothing with no explanation. There is a
   `reconnecting…` indicator now and every control is disabled while the socket is down.
   432 tests pass.
+- `2026-11-13` — WP20 done. `state` reported `llm: "ready"` unconditionally — hardcoded,
+  exactly the defect `ttft_ms` had and `stt` had until two packages ago. A field that never
+  reflects anything is worse than a missing one, because everything reading it looks
+  finished.
+  Worse, `OpenAICompatGenerator.prefill` swallowed its own failures, so a session started
+  cheerfully against a model server that was not running and the user found out at the
+  first hint, mid-call. The backend now raises and **the server decides** whether that is
+  fatal: it is not, because the audio path is still worth having and the server may come
+  back, but it is reported as `llm_unavailable` at session start with a message saying
+  transcription will work and hints will not. `llm` is `unknown` until something has
+  actually spoken to the model server — honest about not knowing rather than claiming
+  readiness it has no evidence for — then `ready` or `unavailable` by what happened.
+  The console shows `no model server` or `loading speech model…` in the header. Without it,
+  pressing Hint does nothing visible and the user presses it again.
+  442 tests pass. **This vein is close to exhausted**: the three hardcoded-status defects
+  are now all fixed, and what is left of real value needs the Mac mini.

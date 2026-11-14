@@ -151,6 +151,12 @@ perfiles se pueden editar a mitad de sesión.
     y en el almacén de perfiles— pero eso es contención, no autenticación. Ver
     [Visión general](overview.md#supuestos-de-red).
 
+`state` informa de lo que están haciendo realmente los dos modelos. `stt` es `loading`
+mientras se leen los pesos —la primera ejecución los descarga, lo que tarda minutos— y
+`ready` después. `llm` es `unknown` hasta que algo ha hablado con el servidor del modelo, y
+luego `ready` o `unavailable` según haya respondido. Ambos decían `ready` sin condiciones
+hasta que se arrancó una sesión contra un servidor que no estaba corriendo.
+
 A una consola se la saluda con `profiles` antes que con `state`, para que pueda ofrecer una
 elección en lugar de exigir que el identificador se sepa de antemano. `profiles.request`
 vuelve a pedir el listado. Un perfil cuyo fichero no se puede leer se deja fuera y se
@@ -177,6 +183,7 @@ suite.
 | `lane_busy` | Ya hay algo conectado en ese carril. |
 | `bad_transition` | Llegó un comando en una fase de sesión que no lo permite: una sugerencia sin sesión en vivo, `session.config` estando en vivo. |
 | `bad_request` | Un perfil falta, es inválido, o no concuerda con el `session.config` que lo nombró. |
+| `llm_unavailable` | El servidor del modelo no respondió al arrancar la sesión. La transcripción sigue funcionando; las sugerencias no, hasta que vuelva. |
 | `stt_failed` | Una pasada de reconocimiento lanzó una excepción. El carril sigue en pie: un tropiezo de transcripción no debe convertirse en un micrófono muerto el resto de la llamada. |
 | `history_failed` | La grabación está desactivada, o una sesión grabada falta o no se puede leer. |
 | `hint_failed` | La generación lanzó una excepción. El `hint.end` correspondiente lleva `reason: "error"`. |

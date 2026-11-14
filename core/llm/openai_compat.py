@@ -17,6 +17,11 @@ context and populates the server's cache without generating anything, so the
 first real hint of a session pays only for its own delta. A server that does not
 support a zero-token completion simply returns nothing useful, which is
 harmless: the cost moves to the first hint instead of being paid up front.
+
+A prefill that *fails* is a different matter, and it is raised rather than
+logged. It is the first time anything talks to the model server, so it is the
+earliest moment a dead one can be noticed -- which is at the start of a session
+rather than in the middle of a call.
 """
 
 from __future__ import annotations
@@ -146,12 +151,12 @@ class OpenAICompatGenerator:
             "max_tokens": 0,
             "stream": False,
         }
-        try:
-            await self.client().post("/v1/chat/completions", json=payload)
-        except httpx.HTTPError as exc:
-            # Not fatal. A failed warm-up only means the first hint of the
-            # session pays the prefill cost that this call was meant to absorb.
-            log.warning("prefill warm-up failed, first hint will be slower: %s", exc)
+        # Failures are raised rather than swallowed. Whether a dead model
+        # server should stop a session is the server's decision, not this
+        # backend's -- and swallowing it here meant a session started happily
+        # with nothing behind it and the user found out mid-call.
+        response = await self.client().post("/v1/chat/completions", json=payload)
+        response.raise_for_status()
 
     async def stream(self, context: HintContext) -> AsyncIterator[str]:
         payload = {
