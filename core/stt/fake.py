@@ -33,6 +33,10 @@ class ScriptedRecognizer:
     language: Language = "en"
     #: Frames between partials while an utterance is open.
     partial_every: int = 10
+    #: Raise on the nth call to feed, counting from one. A real model can fail
+    #: on bad audio or an out-of-memory moment, and a fake that never raises
+    #: leaves that path untested.
+    fail_on_feed: int | None = None
 
     _position: dict[str, int] = field(default_factory=dict, init=False)
     _frames_seen: dict[str, int] = field(default_factory=dict, init=False)
@@ -59,8 +63,13 @@ class ScriptedRecognizer:
             index += 1
         return None
 
+    _feeds: int = field(default=0, init=False)
+
     def feed(self, lane: Lane, timestamp_us: int, pcm: bytes) -> list[Segment]:
         del timestamp_us, pcm  # the script does not care what was said
+        self._feeds += 1
+        if self.fail_on_feed is not None and self._feeds == self.fail_on_feed:
+            raise RuntimeError("the recognizer fell over")
         utterance = self._pending(lane)
         if utterance is None:
             return []

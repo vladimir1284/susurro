@@ -76,6 +76,9 @@ LinkedIn draft if there is a lesson worth writing down.
 
 ### Added after WP9, once every queued package was done
 
+- [x] **WP18 — Hunt the rest of the fake-hidden defects**
+      Three more failure paths that existed only because no stand-in ever misbehaved.
+
 - [x] **WP17 — Get recognition off the event loop**
       A defect the fakes hid completely, and one that would have shown up on the Mac mini
       as a hang.
@@ -135,6 +138,7 @@ has no LinkedIn access and will not acquire any. The operator reviews and posts.
 7. Writing the benchmark before the feature (gates in code, ways to measure nothing) — drafted
 8. Answering before the question ends (speculative hints, hysteresis, the flush bug) — drafted
 9. The feature I shipped switched off (defaults as the product, deletion as a feature) — drafted
+10. My test doubles were lying to me (what a stand-in does that reality does not) — drafted
 
 ## Rules for the unattended session
 
@@ -487,3 +491,21 @@ machine with audio devices.
   recognition works. That lesson is now written into `docs/architecture/audio.md`, where
   the next person writing a backend will see it.
   419 tests pass. Checks ran before the commit this time.
+- `2026-11-13` — WP18 done. Asked the question the last defect raised — what do the fakes do
+  reliably that the real backends will not — and found three more failure paths with no
+  handling behind them, each unreachable because no stand-in ever misbehaved.
+  **A hint had no deadline.** A real model server can accept a request and then produce
+  nothing; the console would have said "writing…" for the rest of the call. Two deadlines
+  now, because the failures differ: eight seconds for a first token (a stuck or overloaded
+  model) and twenty overall (a dropped connection mid-sentence). Both generous against the
+  one-second budget — they catch a stuck model, they do not enforce quality.
+  **A dropped connection mid-stream had handling that had never run.** It does now, and
+  whatever the hint managed before failing is still recorded: a hint that stopped halfway is
+  evidence about the model, not nothing.
+  **A recognizer exception would have killed the lane.** A model can raise on bad audio or
+  an out-of-memory moment, and letting that propagate turns a transcription hiccup into a
+  dead microphone for the rest of a call. Caught, reported as `stt_failed`, lane stays up.
+  The fakes gained about twenty lines so they can hang, fail after N chunks, and raise on
+  the Nth call. **The failure modes had to exist in the fakes before the handling could be
+  written** — there was no deadline because nothing had ever been slow. Article 10 drafted
+  on exactly this. 425 tests pass.

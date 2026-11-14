@@ -978,3 +978,129 @@ class TestRecognizerOffTheEventLoop:
         live = await await_phase(console, "live")
         assert live["stt"] == "ready"
         await console.close()
+
+
+class TestWhenTheBackendsMisbehave:
+    """Paths the fakes used to make unreachable.
+
+    A stand-in that never hangs, never drops a connection and never raises
+    will let a system ship with no handling for any of them. These fakes can
+    now do all three.
+    """
+
+    async def test_a_model_that_never_speaks_ends_the_hint(
+        self, url: str, core: Core
+    ) -> None:
+        # Otherwise the console says "writing…" for the rest of the call.
+        core.generator.hang = True
+        core.first_token_deadline_s = 0.2
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await console.send(
+            json.dumps({"type": "hint.request", "mode": "conversational"})
+        )
+        end = await drain(console, "hint.end")
+        assert end["reason"] == "error"
+        error = await drain(console, "error")
+        assert error["code"] == "hint_failed"
+        assert "first token" in error["detail"]
+        await console.close()
+
+    async def test_a_model_that_stops_mid_sentence_ends_the_hint(
+        self, url: str, core: Core
+    ) -> None:
+        core.generator.chunk_delay_s = 0.05
+        core.hint_deadline_s = 0.12
+        core.first_token_deadline_s = 0.2
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await console.send(
+            json.dumps({"type": "hint.request", "mode": "conversational"})
+        )
+        end = await drain(console, "hint.end")
+        assert end["reason"] == "error"
+        await console.close()
+
+    async def test_a_dropped_connection_is_reported_not_swallowed(
+        self, url: str, core: Core
+    ) -> None:
+        core.generator.fail_after_chunks = 1
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await console.send(
+            json.dumps({"type": "hint.request", "mode": "conversational"})
+        )
+        await drain(console, "hint.delta")
+        assert (await drain(console, "hint.end"))["reason"] == "error"
+        assert (await drain(console, "error"))["code"] == "hint_failed"
+        await console.close()
+
+    async def test_a_failed_hint_still_records_what_it_managed(
+        self, url: str, core: Core, tmp_path: Path
+    ) -> None:
+        # A hint that stopped halfway is evidence about the model, not nothing.
+        core.history = HistoryStore(tmp_path, enabled=True)
+        core.generator.fail_after_chunks = 1
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await console.send(
+            json.dumps({"type": "hint.request", "mode": "conversational"})
+        )
+        await drain(console, "hint.end")
+        await console.send(json.dumps({"type": "session.stop"}))
+        await await_phase(console, "configured")
+
+        session_id = core.history.list_sessions()[0]["session_id"]
+        recorded = core.history.load(session_id).hints[0]
+        assert recorded.reason == "error"
+        assert recorded.text
+        await console.close()
+
+    async def test_a_failing_recognizer_does_not_take_the_lane_down(
+        self, url: str, core: Core
+    ) -> None:
+        # A transcription hiccup must not become a dead microphone for the
+        # rest of a call.
+        from capture.codec import OpusEncoder
+
+        core.recognizer = ScriptedRecognizer(
+            script=list(SCRIPT), partial_every=2, fail_on_feed=2
+        )
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+
+        async with websockets.connect(f"{url}/capture?token={TOKEN}") as capture:
+            await capture.send(
+                p.Hello(session_id="s", lane="far", client="test/0.1").to_json()
+            )
+            await capture.recv()
+            encoder = OpusEncoder()
+            for index in range(5):
+                await capture.send(opus_frame(encoder, index))
+
+            assert (await drain(console, "error"))["code"] == "stt_failed"
+            # Still connected, still being fed, still accepting commands.
+            await console.send(json.dumps({"type": "profiles.request"}))
+            assert (await drain(console, "profiles"))["type"] == "profiles"
+            assert core.state.lanes["far"] == "up"
+
+        await console.close()
+
+    async def test_a_hint_after_a_failed_one_still_works(
+        self, url: str, core: Core
+    ) -> None:
+        # The failure must not leave the session wedged.
+        core.generator.fail_after_chunks = 1
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await console.send(
+            json.dumps({"type": "hint.request", "mode": "conversational"})
+        )
+        await drain(console, "hint.end")
+
+        core.generator.fail_after_chunks = None
+        await console.send(
+            json.dumps({"type": "hint.request", "mode": "conversational"})
+        )
+        assert (await drain(console, "hint.end"))["reason"] == "complete"
+        await console.close()

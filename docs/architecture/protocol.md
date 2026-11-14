@@ -89,6 +89,12 @@ waits through too. It is present on a cancelled hint as well, when generation go
 an abandoned hint still measured the model. This is the number
 [M2's gate](../roadmap.md#m2-manual-hint) is stated in.
 
+A hint has two deadlines. If no first token arrives within eight seconds, or the whole
+thing has not finished within twenty, it ends with `reason: "error"`. Both are generous
+against the one-second budget — they exist to catch a stuck model, not to enforce quality.
+A suggestion arriving after them is not late, it is noise, and a console left saying
+"writing…" for the rest of a call is worse than one that says it failed.
+
 ### Console to core
 
 ```json
@@ -166,6 +172,7 @@ the suite.
 | `lane_busy` | Something is already connected on that lane. |
 | `bad_transition` | A command arrived in a session phase that does not allow it — a hint with no live session, `session.config` while live. |
 | `bad_request` | A profile is missing, invalid, or disagrees with the `session.config` that named it. |
+| `stt_failed` | A recognition pass raised. The lane stays up: a transcription hiccup must not become a dead microphone for the rest of a call. |
 | `history_failed` | Recording is disabled, or a recorded session is missing or unreadable. |
 | `hint_failed` | Generation raised. The matching `hint.end` carries `reason: "error"`. |
 | `protocol_error` | Base code; not emitted directly. |

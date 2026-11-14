@@ -92,6 +92,12 @@ que el usuario también espera. Está presente también en una sugerencia cancel
 generación llegó tan lejos: una sugerencia abandonada igualmente midió el modelo. Es la
 cifra en la que está enunciada [la puerta de M2](../roadmap.md#m2-sugerencia-manual).
 
+Una sugerencia tiene dos fechas límite. Si no llega un primer token en ocho segundos, o si
+el conjunto no termina en veinte, acaba con `reason: "error"`. Ambas son generosas frente al
+presupuesto de un segundo: existen para cazar un modelo atascado, no para imponer calidad.
+Una sugerencia que llega después de eso no va tarde, es ruido, y una consola diciendo
+«writing…» el resto de la llamada es peor que una que dice que falló.
+
 ### De la consola al núcleo
 
 ```json
@@ -171,6 +177,7 @@ suite.
 | `lane_busy` | Ya hay algo conectado en ese carril. |
 | `bad_transition` | Llegó un comando en una fase de sesión que no lo permite: una sugerencia sin sesión en vivo, `session.config` estando en vivo. |
 | `bad_request` | Un perfil falta, es inválido, o no concuerda con el `session.config` que lo nombró. |
+| `stt_failed` | Una pasada de reconocimiento lanzó una excepción. El carril sigue en pie: un tropiezo de transcripción no debe convertirse en un micrófono muerto el resto de la llamada. |
 | `history_failed` | La grabación está desactivada, o una sesión grabada falta o no se puede leer. |
 | `hint_failed` | La generación lanzó una excepción. El `hint.end` correspondiente lleva `reason: "error"`. |
 | `protocol_error` | Código base; no se emite directamente. |

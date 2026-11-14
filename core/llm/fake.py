@@ -45,6 +45,12 @@ class CannedHintGenerator:
     )
     #: Seconds between chunks. Zero by default so tests do not wait.
     chunk_delay_s: float = 0.0
+    #: Raise on the nth chunk, counting from one. A real server drops
+    #: connections mid-stream; a fake that never does hides every path that
+    #: handles it.
+    fail_after_chunks: int | None = None
+    #: Stall forever instead of producing anything, to exercise the deadlines.
+    hang: bool = False
 
     prefill_count: int = field(default=0, init=False)
     prefilled: str | None = field(default=None, init=False)
@@ -56,7 +62,13 @@ class CannedHintGenerator:
 
     async def stream(self, context: HintContext) -> AsyncIterator[str]:
         self.contexts.append(context)
-        for chunk in self.hints.get(context.mode, ("- (no canned hint)\n",)):
+        if self.hang:
+            await asyncio.sleep(3600)
+        for index, chunk in enumerate(
+            self.hints.get(context.mode, ("- (no canned hint)\n",)), start=1
+        ):
+            if self.fail_after_chunks is not None and index > self.fail_after_chunks:
+                raise ConnectionError("the model server went away")
             if self.chunk_delay_s:
                 await asyncio.sleep(self.chunk_delay_s)
             yield chunk

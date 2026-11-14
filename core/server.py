@@ -63,6 +63,18 @@ CONTENT_TYPES = {
 CLOSE_UNAUTHORIZED = 1008
 CLOSE_PROTOCOL = 1002
 
+#: A hint that has not finished by now is abandoned. The user is in a
+#: conversation: a suggestion that arrives after this is not late, it is noise,
+#: and leaving the console saying "writing…" indefinitely is worse than saying
+#: it failed. The fakes never hang, so nothing exercised this until a deadline
+#: existed to test.
+HINT_DEADLINE_S = 20.0
+
+#: Time to first token beyond which the hint is abandoned. Much tighter than
+#: the overall deadline: if the model has not started speaking by now it is
+#: either stuck or so loaded that the answer would be useless anyway.
+HINT_FIRST_TOKEN_DEADLINE_S = 8.0
+
 
 @dataclass
 class Core:
@@ -70,6 +82,11 @@ class Core:
     recognizer: Recognizer
     generator: HintGenerator
     token: str
+    #: Abandon a hint that has not produced its first token, or has not
+    #: finished, by these deadlines. Both are generous against the one-second
+    #: budget: they exist to catch a stuck model, not to enforce quality.
+    hint_deadline_s: float = HINT_DEADLINE_S
+    first_token_deadline_s: float = HINT_FIRST_TOKEN_DEADLINE_S
     #: Per-lane voice activity. ``None`` disables end-of-turn detection, which
     #: leaves hints manual -- everything else still works.
     detectors: dict[str, Detector] | None = None
@@ -227,14 +244,31 @@ class Core:
     async def recognize(
         self, lane: p.Lane, timestamp_us: int, pcm: bytes
     ) -> list[Segment]:
-        async with self._recognizer_lock:
-            return await asyncio.to_thread(
-                self.recognizer.feed, lane, timestamp_us, pcm
-            )
+        return await self._recognizer_call(
+            self.recognizer.feed, lane, timestamp_us, pcm
+        )
 
     async def flush_lane(self, lane: p.Lane) -> list[Segment]:
-        async with self._recognizer_lock:
-            return await asyncio.to_thread(self.recognizer.flush, lane)
+        return await self._recognizer_call(self.recognizer.flush, lane)
+
+    async def _recognizer_call(self, method, *args) -> list[Segment]:
+        """Run a recognizer call on a worker thread, surviving its failures.
+
+        A model can raise -- bad audio, an out-of-memory moment, a backend
+        changing under us. Letting that propagate would drop the capture
+        connection and take the lane down with it, turning a transcription
+        hiccup into a dead microphone for the rest of the call. The fakes never
+        raise, so nothing exercised this before.
+        """
+        try:
+            async with self._recognizer_lock:
+                return await asyncio.to_thread(method, *args)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - reported, not fatal
+            log.exception("recognizer failed")
+            await self.broadcast(p.error("stt_failed", str(exc)))
+            return []
 
     async def emit_segment(self, segment: Segment) -> None:
         if segment.final:
@@ -519,7 +553,29 @@ class Core:
         tokens = 0
         started = self._hint_started.get(hint_id, time.perf_counter())
         try:
-            async for chunk in self.generator.stream(context):
+            stream = self.generator.stream(context)
+            while True:
+                # Two deadlines, because the failures differ. Nothing at all
+                # means a stuck or overloaded model; stopping mid-sentence
+                # means a dropped connection. Both end the hint rather than
+                # leaving the console saying "writing…" for the rest of the
+                # call.
+                budget = (
+                    self.first_token_deadline_s
+                    if tokens == 0
+                    else self.hint_deadline_s - (time.perf_counter() - started)
+                )
+                if budget <= 0:
+                    raise TimeoutError(
+                        f"hint exceeded its {self.hint_deadline_s:.0f}s deadline"
+                    )
+                try:
+                    chunk = await asyncio.wait_for(anext(stream), timeout=budget)
+                except StopAsyncIteration:
+                    break
+                except TimeoutError as exc:
+                    stage = "its first token" if tokens == 0 else "a further token"
+                    raise TimeoutError(f"the model stopped before {stage}") from exc
                 if tokens == 0:
                     self._hint_ttft[hint_id] = round(
                         (time.perf_counter() - started) * 1000
@@ -534,6 +590,13 @@ class Core:
         except Exception as exc:  # noqa: BLE001 - surfaced to the console
             log.exception("hint %s failed", hint_id)
             self.state.end_hint(hint_id)
+            # Whatever was written before it failed is still recorded: a hint
+            # that stopped halfway is evidence about the model, not nothing.
+            self.record_hint(
+                hint_id, mode, "error", tokens=tokens,
+                ttft_ms=self._hint_ttft.get(hint_id),
+            )
+            self._hint_trigger = None
             await self.broadcast(p.hint_end(hint_id, "error"))
             await self.broadcast(p.error("hint_failed", str(exc)))
             return
