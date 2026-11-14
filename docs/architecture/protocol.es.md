@@ -86,6 +86,12 @@ Un `hint.end` con `reason: "cancelled"` es el desenlace normal de una generació
 especulativa que la otra parte interrumpió. La consola descarta la sugerencia parcial en
 lugar de mostrarla.
 
+`ttft_ms` es el tiempo medido desde que se pide la sugerencia hasta su primer token, no
+desde que la petición llega al modelo: la planificación y el armado del prompt son latencia
+que el usuario también espera. Está presente también en una sugerencia cancelada, cuando la
+generación llegó tan lejos: una sugerencia abandonada igualmente midió el modelo. Es la
+cifra en la que está enunciada [la puerta de M2](roadmap.md#m2-sugerencia-manual).
+
 ### De la consola al núcleo
 
 ```json

@@ -746,3 +746,95 @@ class TestSessionRecording:
         )
         assert (await recv_json(console))["code"] == "malformed_message"
         await console.close()
+
+
+class TestLatencyMeasurement:
+    """The number M2's gate is stated in, measured in the live system.
+
+    It was in the protocol, rendered by the console, stored in recordings and
+    documented -- and nothing produced it. A field that is always absent is
+    worse than a missing one: everything downstream looks finished.
+    """
+
+    async def test_a_completed_hint_reports_its_time_to_first_token(
+        self, url: str, core: Core
+    ) -> None:
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await console.send(
+            json.dumps({"type": "hint.request", "mode": "conversational"})
+        )
+        end = await drain(console, "hint.end")
+        assert end["reason"] == "complete"
+        assert isinstance(end["ttft_ms"], int)
+        assert end["ttft_ms"] >= 0
+        await console.close()
+
+    async def test_the_clock_starts_when_the_hint_is_asked_for(
+        self, url: str, core: Core
+    ) -> None:
+        # Not when the request reaches the model: scheduling and prompt
+        # assembly are latency the user waits through too.
+        core.generator.chunk_delay_s = 0.05
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await console.send(
+            json.dumps({"type": "hint.request", "mode": "conversational"})
+        )
+        end = await drain(console, "hint.end")
+        assert end["ttft_ms"] >= 50
+        await console.close()
+
+    async def test_a_cancelled_hint_keeps_the_measurement_it_made(
+        self, url: str, core: Core
+    ) -> None:
+        # A speculative hint that was abandoned still measured the model.
+        core.generator.chunk_delay_s = 0.02
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await console.send(
+            json.dumps({"type": "hint.request", "mode": "conversational"})
+        )
+        start = await drain(console, "hint.start")
+        await drain(console, "hint.delta")
+        await console.send(
+            json.dumps({"type": "hint.cancel", "hint_id": start["hint_id"]})
+        )
+        end = await drain(console, "hint.end")
+        assert end["reason"] == "cancelled"
+        assert isinstance(end["ttft_ms"], int)
+        await console.close()
+
+    async def test_the_measurement_reaches_the_recording(
+        self, url: str, core: Core, tmp_path: Path
+    ) -> None:
+        core.history = HistoryStore(tmp_path, enabled=True)
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await console.send(
+            json.dumps({"type": "hint.request", "mode": "conversational"})
+        )
+        await drain(console, "hint.end")
+        await console.send(json.dumps({"type": "session.stop"}))
+        await drain(console, "state")
+
+        session_id = core.history.list_sessions()[0]["session_id"]
+        recorded = core.history.load(session_id).hints[0]
+        assert recorded.ttft_ms is not None
+        await console.close()
+
+    async def test_measurements_do_not_leak_between_hints(
+        self, url: str, core: Core
+    ) -> None:
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        for _ in range(3):
+            await console.send(
+                json.dumps({"type": "hint.request", "mode": "conversational"})
+            )
+            await drain(console, "hint.end")
+        # Each hint cleans up after itself; a session of a hundred hints must
+        # not accumulate a hundred timers.
+        assert core._hint_started == {}
+        assert core._hint_ttft == {}
+        await console.close()

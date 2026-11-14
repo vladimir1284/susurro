@@ -15,6 +15,7 @@ import asyncio
 import contextlib
 import hmac
 import logging
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -85,6 +86,11 @@ class Core:
     #: cancel a speculative hint without touching one the user asked for.
     _hint_trigger: str | None = field(default=None, init=False)
     _recording: Recording | None = field(default=None, init=False)
+    #: When each in-flight hint was asked for, and how long until its first
+    #: token arrived. This is the number the product lives on -- M2's gate is
+    #: stated in it -- and until now nothing measured it.
+    _hint_started: dict[str, float] = field(default_factory=dict, init=False)
+    _hint_ttft: dict[str, int] = field(default_factory=dict, init=False)
     _hint_text: dict[str, str] = field(default_factory=dict, init=False)
 
     # -- auth --------------------------------------------------------------- #
@@ -316,9 +322,17 @@ class Core:
         await self.broadcast(self.state_event())
 
     def record_hint(
-        self, hint_id: str, mode: str, reason: str, *, tokens: int | None = None
+        self,
+        hint_id: str,
+        mode: str,
+        reason: str,
+        *,
+        tokens: int | None = None,
+        ttft_ms: int | None = None,
     ) -> None:
         text = self._hint_text.pop(hint_id, "")
+        self._hint_started.pop(hint_id, None)
+        self._hint_ttft.pop(hint_id, None)
         if self._recording is None or not text:
             return
         self._recording.hints.append(
@@ -330,6 +344,7 @@ class Core:
                 reason=reason,
                 at=self._recording.lines[-1].t if self._recording.lines else 0.0,
                 tokens=tokens,
+                ttft_ms=ttft_ms,
             )
         )
 
@@ -391,6 +406,8 @@ class Core:
         self.state.start()
         self.transcript.clear()
         self._hint_text.clear()
+        self._hint_started.clear()
+        self._hint_ttft.clear()
         if self.history is not None and self.history.enabled:
             self._recording = Recording(
                 session_id=now().replace(":", "-"),
@@ -456,6 +473,10 @@ class Core:
     async def start_hint(self, mode: str, trigger: str) -> None:
         hint_id = self.state.begin_hint()
         self._hint_trigger = trigger
+        # The clock starts when the hint is asked for, not when the request
+        # reaches the model. Scheduling and prompt assembly are latency the
+        # user waits through too.
+        self._hint_started[hint_id] = time.perf_counter()
         await self.broadcast(p.hint_start(hint_id, trigger, mode))  # type: ignore[arg-type]
         self._hint_task = asyncio.create_task(self.run_hint(hint_id, mode))
 
@@ -466,8 +487,13 @@ class Core:
             transcript=tuple(self.transcript),
         )
         tokens = 0
+        started = self._hint_started.get(hint_id, time.perf_counter())
         try:
             async for chunk in self.generator.stream(context):
+                if tokens == 0:
+                    self._hint_ttft[hint_id] = round(
+                        (time.perf_counter() - started) * 1000
+                    )
                 tokens += 1
                 self._hint_text[hint_id] = self._hint_text.get(hint_id, "") + chunk
                 await self.broadcast(p.hint_delta(hint_id, chunk))
@@ -482,9 +508,12 @@ class Core:
             await self.broadcast(p.error("hint_failed", str(exc)))
             return
         if self.state.end_hint(hint_id):
-            self.record_hint(hint_id, mode, "complete", tokens=tokens)
+            ttft_ms = self._hint_ttft.get(hint_id)
+            self.record_hint(hint_id, mode, "complete", tokens=tokens, ttft_ms=ttft_ms)
             self._hint_trigger = None
-            await self.broadcast(p.hint_end(hint_id, "complete", tokens=tokens))
+            await self.broadcast(
+                p.hint_end(hint_id, "complete", tokens=tokens, ttft_ms=ttft_ms)
+            )
 
     async def cancel_hint(self, hint_id: str | None = None) -> None:
         task, self._hint_task = self._hint_task, None
@@ -499,9 +528,17 @@ class Core:
         self.state.end_hint(active)
         # A cancelled hint is still recorded: afterwards it is useful to see
         # what the thing was about to say and whether abandoning it was right.
-        self.record_hint(active, self.state.mode or "conversational", "cancelled")
+        # Its time to first token is kept too, when it got that far -- a
+        # speculative hint that was cancelled still measured the model.
+        ttft_ms = self._hint_ttft.get(active)
+        self.record_hint(
+            active,
+            self.state.mode or "conversational",
+            "cancelled",
+            ttft_ms=ttft_ms,
+        )
         self._hint_trigger = None
-        await self.broadcast(p.hint_end(active, "cancelled"))
+        await self.broadcast(p.hint_end(active, "cancelled", ttft_ms=ttft_ms))
 
 
 def serve_console(root: Path, request: Request) -> Response | None:

@@ -76,6 +76,9 @@ LinkedIn draft if there is a lesson worth writing down.
 
 ### Added after WP9, once every queued package was done
 
+- [x] **WP16 — Measure time to first token in the live system**
+      It was in the protocol, the console and the recordings. Nothing produced it.
+
 - [x] **WP15 — M6: setup documentation for someone who did not build this**
       Plus the bootstrap bug that writing it exposed.
 
@@ -439,3 +442,22 @@ machine with audio devices.
   instructions forces the order a stranger would do things in, and the tests were all
   written by someone who already had profiles.
   Article 9 drafted, on shipping the recording feature switched off. 405 tests pass.
+- `2026-11-13` — WP16 done, and **live translation deliberately not done**. Translation was
+  the last item I had listed for M6, and on inspection it is the weakest thing on the list
+  for this project: it needs another model pass per utterance, competing for the same two
+  cores as the hint generation whose latency is the entire product, for a case the operator
+  did not ask for — sessions here are Spanish or English and he works in both. Building it
+  because it was on a list would have been the wrong call, so it is recorded as declined
+  rather than silently skipped.
+  What was worth doing instead: `ttft_ms` existed in the protocol, was rendered by the
+  console, stored in recordings and documented — and **nothing ever produced it**. A field
+  that is always absent is worse than a missing one, because everything downstream of it
+  looks finished. It is now measured from the moment a hint is asked for, not from when the
+  request reaches the model, since scheduling and prompt assembly are latency the user waits
+  through too. A cancelled hint keeps the measurement it made: an abandoned speculative hint
+  still measured the model.
+  The console shows the median of the last nine, green under a second and amber over it —
+  the median rather than the last value, so one slow hint does not make a good session look
+  broken. That threshold is M2's gate, and watching it live is the only way to know a call
+  is inside budget rather than discovering afterwards that every hint arrived too late to
+  read. 416 tests pass.

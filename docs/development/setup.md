@@ -125,6 +125,11 @@ a bookmark straight into the right one:
 **Space** requests a hint — the largest target on any keyboard, and the one you can hit
 without looking down.
 
+A **latency** indicator appears once hints have been measured: the median time to first
+token over the last few, green under a second and amber over it. That threshold is M2's
+gate, and watching it during a call is the only way to know a session is inside the budget
+rather than finding out afterwards that every hint arrived too late to read.
+
 **History** lists recorded sessions, shows a transcript as Markdown, and downloads or
 deletes one. Deleting takes two clicks: it cannot be undone, and a dialog would be heavier
 than the decision deserves. When the core is recording, a red indicator sits in the header

@@ -128,6 +128,12 @@ sesión, lo que sirve para un marcador que entre directo a la correcta:
 **Espacio** pide una sugerencia: es la tecla más grande de cualquier teclado y la única que
 puedes acertar sin mirar hacia abajo.
 
+Aparece un indicador de **latencia** en cuanto hay sugerencias medidas: la mediana del
+tiempo hasta el primer token de las últimas, verde por debajo de un segundo y ámbar por
+encima. Ese umbral es la puerta de M2, y mirarlo durante una llamada es la única forma de
+saber que una sesión está dentro del presupuesto, en vez de descubrir después que todas las
+sugerencias llegaron tarde para leerse.
+
 **History** lista las sesiones grabadas, muestra una transcripción en Markdown y la descarga
 o la borra. Borrar cuesta dos clics: no se puede deshacer, y un diálogo pesaría más de lo
 que la decisión merece. Cuando el núcleo está grabando, un indicador rojo se queda en la

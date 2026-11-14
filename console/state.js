@@ -23,6 +23,10 @@ export const EMPTY = Object.freeze({
   // Recorded sessions, and whether the core is writing them right now. The
   // flag is rendered prominently: a tool that records conversations without
   // saying so is not one anybody should trust.
+  // The last few measured times to first token. The median of a handful is
+  // what tells you whether a call is inside the latency budget; a single
+  // number swings too much to read mid-conversation.
+  latencies: [],
   recording: false,
   sessions: [],
   export: null,
@@ -103,10 +107,24 @@ export function apply(state, event) {
       if (!state.hint || state.hint.id !== event.hint_id) return state;
       // A cancelled hint is removed, not greyed out. It was generated for a
       // question the other party has already moved on from, so leaving it on
-      // screen competes with whatever comes next.
-      if (event.reason === "cancelled") return { ...state, hint: null };
+      // screen competes with whatever comes next. Its latency still counts:
+      // the model was measured either way.
+      if (event.reason === "cancelled") {
+        return {
+          ...state,
+          latencies:
+            event.ttft_ms != null
+              ? [...state.latencies, event.ttft_ms].slice(-9)
+              : state.latencies,
+          hint: null,
+        };
+      }
       return {
         ...state,
+        latencies:
+          event.ttft_ms != null
+            ? [...state.latencies, event.ttft_ms].slice(-9)
+            : state.latencies,
         hint: {
           ...state.hint,
           done: true,
@@ -129,6 +147,12 @@ export function apply(state, event) {
 
 export function speaker(lane) {
   return lane === "far" ? "them" : "you";
+}
+
+export function medianLatency(state) {
+  if (state.latencies.length === 0) return null;
+  const ordered = [...state.latencies].sort((a, b) => a - b);
+  return ordered[Math.floor(ordered.length / 2)];
 }
 
 export function isLive(state) {

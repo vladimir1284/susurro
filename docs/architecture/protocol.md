@@ -83,6 +83,12 @@ Bidirectional JSON. No binary frames.
 `hint.end` with `reason: "cancelled"` is the normal outcome of a speculative generation
 the other party interrupted. The console discards the partial hint rather than showing it.
 
+`ttft_ms` is the measured time from the hint being asked for to its first token — not from
+the request reaching the model, since scheduling and prompt assembly are latency the user
+waits through too. It is present on a cancelled hint as well, when generation got that far:
+an abandoned hint still measured the model. This is the number
+[M2's gate](roadmap.md#m2-manual-hint) is stated in.
+
 ### Console to core
 
 ```json

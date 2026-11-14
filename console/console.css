@@ -150,6 +150,11 @@ select:disabled { opacity: 0.4; }
 #editor-status[data-state="saved"] { color: var(--them); }
 #editor-status[data-state="error"] { color: var(--error); }
 
+/* Green inside the budget, amber over it. The threshold is the one the
+   roadmap's M2 gate is stated in: under a second is useful. */
+#latency-pill[data-over="false"] { color: var(--them); border-color: currentColor; }
+#latency-pill[data-over="true"] { color: var(--hint); border-color: currentColor; }
+
 #recording-pill {
   color: var(--error);
   border-color: currentColor;

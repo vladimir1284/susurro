@@ -1,7 +1,7 @@
 // Console wiring: socket in, DOM out. All of the interesting behaviour lives
 // in state.js, which has no DOM and is tested on its own.
 
-import { apply, initial, isLive, speaker } from "./state.js";
+import { apply, initial, isLive, medianLatency, speaker } from "./state.js";
 
 const params = new URLSearchParams(location.search);
 const TOKEN = params.get("token") ?? "";
@@ -34,6 +34,7 @@ const el = {
   editorClose: document.getElementById("editor-close"),
   editorStatus: document.getElementById("editor-status"),
   recordingPill: document.getElementById("recording-pill"),
+  latencyPill: document.getElementById("latency-pill"),
   history: document.getElementById("history"),
   historyPanel: document.getElementById("history-panel"),
   historyList: document.getElementById("history-list"),
@@ -99,6 +100,7 @@ function render() {
     el[lane].textContent = `${lane} ${state.lanes[lane] === "up" ? "●" : "○"}`;
   }
 
+  renderLatency();
   renderProfiles();
   renderEditor();
   renderHistory();
@@ -173,6 +175,19 @@ const EDITOR_FIELDS = [
   "editorLabel", "editorLanguage", "editorMode",
   "editorResume", "editorRole", "editorNotes", "editorSave",
 ];
+
+//: Under a second is the budget the whole design is built around. Showing it
+//: during a call is the only way to know a session is inside it, rather than
+//: finding out afterwards that every hint arrived too late to read.
+const LATENCY_BUDGET_MS = 1000;
+
+function renderLatency() {
+  const median = medianLatency(state);
+  el.latencyPill.hidden = median === null;
+  if (median === null) return;
+  el.latencyPill.textContent = `${median} ms`;
+  el.latencyPill.dataset.over = String(median > LATENCY_BUDGET_MS);
+}
 
 function renderHistory() {
   // Shown whenever the core is recording, open panel or not. This is the one

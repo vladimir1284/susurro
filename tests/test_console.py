@@ -795,3 +795,75 @@ class TestFirstProfile:
         page.locator("#start").click()
         expect(page.locator("#session-pill")).to_have_text("live")
         expect(page.locator("#new")).to_be_disabled()
+
+
+class TestLatencyViewModel:
+    """The measured time to first token, as the console keeps it."""
+
+    @pytest.fixture
+    def run_js(self, page: Page, live_console):
+        url, _ = live_console
+        page.goto(url)
+
+        def run(body: str, events: list[dict]):
+            return page.evaluate(
+                """async ([body, events]) => {
+                    const m = await import('./state.js');
+                    let state = m.initial();
+                    for (const event of events) state = m.apply(state, event);
+                    return new Function('state', 'm', body)(state, m);
+                }""",
+                [body, events],
+            )
+
+        return run
+
+    def test_latency_is_hidden_until_something_is_measured(self, run_js) -> None:
+        assert run_js("return state.latencies.length", []) == 0
+
+    def test_a_measurement_is_kept_from_each_hint(self, run_js) -> None:
+        events = [
+            {"type": "hint.start", "hint_id": "h-1", "trigger": "manual", "mode": "x"},
+            {"type": "hint.end", "hint_id": "h-1", "reason": "complete", "ttft_ms": 400},
+        ]
+        assert run_js("return state.latencies", events) == [400]
+
+    def test_a_cancelled_hint_still_counts(self, run_js) -> None:
+        # It measured the model either way.
+        events = [
+            {"type": "hint.start", "hint_id": "h-1", "trigger": "speculative",
+             "mode": "x"},
+            {"type": "hint.end", "hint_id": "h-1", "reason": "cancelled",
+             "ttft_ms": 250},
+        ]
+        assert run_js("return state.latencies", events) == [250]
+
+    def test_the_window_is_bounded(self, run_js) -> None:
+        events = []
+        for index in range(15):
+            events.append(
+                {"type": "hint.start", "hint_id": f"h-{index}", "trigger": "manual",
+                 "mode": "x"}
+            )
+            events.append(
+                {"type": "hint.end", "hint_id": f"h-{index}", "reason": "complete",
+                 "ttft_ms": index}
+            )
+        assert run_js("return state.latencies.length", events) == 9
+
+    def test_the_median_is_reported_not_the_last_value(self, run_js) -> None:
+        # One slow hint should not make a good session look broken.
+        events = []
+        for index, value in enumerate([300, 320, 310, 4000]):
+            events.append(
+                {"type": "hint.start", "hint_id": f"h-{index}", "trigger": "manual",
+                 "mode": "x"}
+            )
+            events.append(
+                {"type": "hint.end", "hint_id": f"h-{index}", "reason": "complete",
+                 "ttft_ms": value}
+            )
+        assert run_js("return m.medianLatency(state)", events) == 320
+
+    def test_no_measurements_means_no_median(self, run_js) -> None:
+        assert run_js("return m.medianLatency(state)", []) is None
