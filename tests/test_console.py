@@ -867,3 +867,49 @@ class TestLatencyViewModel:
 
     def test_no_measurements_means_no_median(self, run_js) -> None:
         assert run_js("return m.medianLatency(state)", []) is None
+
+
+class TestLostConnection:
+    """A console that looks connected while it is not is worse than one that
+    gives up: every control still responds and nothing happens."""
+
+    def test_the_view_model_tracks_the_link(self, page: Page, live_console) -> None:
+        url, _ = live_console
+        page.goto(url)
+        result = page.evaluate(
+            """async () => {
+                const m = await import('./state.js');
+                let s = m.initial();
+                const before = s.connected;
+                s = m.apply(s, {type: 'connection', connected: true});
+                const open = s.connected;
+                s = m.apply(s, {type: 'connection', connected: false});
+                return [before, open, s.connected];
+            }"""
+        )
+        assert result == [False, True, False]
+
+    def test_a_dropped_core_disables_the_console(
+        self, page: Page, tmp_path: Path
+    ) -> None:
+        # The real thing: the core goes away mid-session.
+        import shutil
+
+        directory = tmp_path / "profiles"
+        directory.mkdir()
+        shutil.copy(FIXTURES / "en-technical-backend.json", directory)
+        core = _core(directory)
+
+        urls = _serve(core)
+        url = next(urls)
+        page.goto(f"{url}/?token={TOKEN}")
+        expect(page.locator("#start")).to_be_enabled()
+
+        # Stop the server. The console should notice rather than sit there
+        # looking usable.
+        for _ in urls:
+            pass
+
+        expect(page.locator("#link-pill")).to_be_visible()
+        expect(page.locator("#start")).to_be_disabled()
+        expect(page.locator("#hint-button")).to_be_disabled()

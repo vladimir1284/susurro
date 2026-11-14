@@ -90,6 +90,16 @@ the console, the protocol or the capture client.
   --far @DEFAULT_MONITOR@
 ```
 
+The client reconnects when a lane drops — a core restart or a Wi-Fi blip should not end a
+session, and nobody watches the capture terminal during a meeting, so a client that exits
+quietly looks exactly like one that is working. A refused lane or a bad token is **not**
+retried: that is a configuration mistake, and retrying would bury the message saying so.
+`--no-reconnect` turns it off.
+
+When the link cannot keep up, the oldest queued frame is dropped rather than blocking the
+capture thread. The device keeps producing regardless, so stalling loses the same audio
+anyway — silently, later, and in a burst. The count is logged at the end of the lane.
+
 The backend is selected from the platform. `--far` takes a PipeWire node on Linux or a
 CoreAudio device name on macOS; both accept `--list-devices` to find the right one.
 

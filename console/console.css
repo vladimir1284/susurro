@@ -155,6 +155,8 @@ select:disabled { opacity: 0.4; }
 #latency-pill[data-over="false"] { color: var(--them); border-color: currentColor; }
 #latency-pill[data-over="true"] { color: var(--hint); border-color: currentColor; }
 
+#link-pill { color: var(--error); border-color: currentColor; }
+
 #recording-pill {
   color: var(--error);
   border-color: currentColor;

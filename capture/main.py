@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import logging
 import sys
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -38,25 +39,40 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--list-devices", action="store_true", help="print available audio nodes and exit"
     )
+    parser.add_argument(
+        "--no-reconnect",
+        action="store_true",
+        help="exit when a lane drops instead of reconnecting",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser
 
 
 def build_sources(args: argparse.Namespace) -> dict[Lane, AudioSource]:
-    sources: dict[Lane, AudioSource] = {}
+    return {lane: factory() for lane, factory in build_factories(args).items()}
+
+
+def build_factories(args: argparse.Namespace) -> dict[Lane, Callable[[], AudioSource]]:
+    """One factory per lane.
+
+    Factories rather than instances because a reconnecting lane needs a fresh
+    source each attempt: a closed file or a terminated subprocess cannot be
+    reopened.
+    """
+    sources: dict[Lane, Callable[[], AudioSource]] = {}
     if args.replay_mic:
-        sources["mic"] = WavSource(args.replay_mic, speed=args.speed)
+        sources["mic"] = lambda: WavSource(args.replay_mic, speed=args.speed)
     if args.replay_far:
-        sources["far"] = WavSource(args.replay_far, speed=args.speed)
+        sources["far"] = lambda: WavSource(args.replay_far, speed=args.speed)
     if sources:
         return sources
 
     from capture.backends.pipewire import PipeWireSource
 
     if args.mic:
-        sources["mic"] = PipeWireSource(args.mic, label="mic")
+        sources["mic"] = lambda: PipeWireSource(args.mic, label="mic")
     if args.far:
-        sources["far"] = PipeWireSource(args.far, label="far")
+        sources["far"] = lambda: PipeWireSource(args.far, label="far")
     if not sources:
         raise SourceError(
             "nothing to capture: pass --mic/--far for devices, or "
@@ -83,8 +99,13 @@ def main(argv: list[str] | None = None) -> int:
         "%Y-%m-%dT%H:%M:%SZ"
     )
     try:
-        sources = build_sources(args)
-        sent = asyncio.run(stream_session(args.core, args.token, session_id, sources))
+        reconnect = not args.no_reconnect
+        sources = build_factories(args) if reconnect else build_sources(args)
+        sent = asyncio.run(
+            stream_session(
+                args.core, args.token, session_id, sources, reconnect=reconnect
+            )
+        )
     except SourceError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

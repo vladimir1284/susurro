@@ -132,7 +132,8 @@ press **Space**.
 | Symptom | Likely cause |
 |---|---|
 | Console will not connect | Token mismatch, or the core bound to loopback and you are on another machine. It refuses `0.0.0.0` without `--allow-public-bind`. |
-| A lane never turns green | The capture client exited. Run it in the foreground and read its error. |
+| A lane never turns green | The capture client exited, or is retrying. Run it in the foreground and read its log. |
+| The console header says `reconnecting…` | The core is unreachable. Every control is disabled until the socket is back. |
 | `lane_busy` | Something is already connected on that lane — usually a capture client you forgot to stop. |
 | Transcript is empty but lanes are up | Wrong `far` device: you are capturing silence. `--list-devices` and try the other monitor. |
 | Transcript lags further and further behind | The speech model is slower than real time on this hardware. Try a smaller one, and run the benchmark. |

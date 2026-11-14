@@ -137,7 +137,8 @@ pulsas **Espacio**.
 | Síntoma | Causa probable |
 |---|---|
 | La consola no conecta | Token que no coincide, o el núcleo escuchando en loopback y tú en otra máquina. Se niega a `0.0.0.0` sin `--allow-public-bind`. |
-| Un carril nunca se pone verde | El cliente de captura murió. Ejecútalo en primer plano y lee su error. |
+| Un carril nunca se pone verde | El cliente de captura murió, o está reintentando. Ejecútalo en primer plano y lee su registro. |
+| La cabecera de la consola dice `reconnecting…` | El núcleo no es alcanzable. Todos los controles quedan desactivados hasta que vuelva el socket. |
 | `lane_busy` | Ya hay algo conectado en ese carril, normalmente un cliente de captura que olvidaste parar. |
 | La transcripción está vacía con los carriles arriba | Dispositivo `far` equivocado: estás capturando silencio. `--list-devices` y prueba el otro monitor. |
 | La transcripción se atrasa cada vez más | El modelo de voz va más lento que el tiempo real en ese hardware. Prueba uno más pequeño y ejecuta el benchmark. |

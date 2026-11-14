@@ -35,6 +35,7 @@ const el = {
   editorStatus: document.getElementById("editor-status"),
   recordingPill: document.getElementById("recording-pill"),
   latencyPill: document.getElementById("latency-pill"),
+  linkPill: document.getElementById("link-pill"),
   history: document.getElementById("history"),
   historyPanel: document.getElementById("history-panel"),
   historyList: document.getElementById("history-list"),
@@ -72,6 +73,10 @@ function send(message) {
 function connect() {
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   socket = new WebSocket(`${scheme}://${location.host}/console?token=${TOKEN}`);
+  socket.addEventListener("open", () => {
+    state = apply(state, { type: "connection", connected: true });
+    render();
+  });
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
     state = apply(state, message);
@@ -86,8 +91,11 @@ function connect() {
     render();
   });
   socket.addEventListener("close", () => {
-    // Reconnect quietly. A console that gives up silently in the middle of a
-    // call is worse than one that keeps trying.
+    // Keep trying, and say so. A console that gives up silently mid-call is
+    // bad; one that looks connected while it is not is worse, because every
+    // control still responds and nothing happens.
+    state = apply(state, { type: "connection", connected: false });
+    render();
     setTimeout(connect, 1000);
   });
 }
@@ -107,14 +115,17 @@ function render() {
   renderTranscript();
   renderHint();
 
-  el.profile.disabled = isLive(state) || state.profiles.length === 0;
-  el.edit.disabled = !selectedProfile();
+  el.linkPill.hidden = state.connected;
+  // Nothing can be sent while the socket is down, so nothing offers to.
+  el.profile.disabled =
+    !state.connected || isLive(state) || state.profiles.length === 0;
+  el.edit.disabled = !state.connected || !selectedProfile();
   // "New" stays available always, including on a fresh install with no
   // profiles at all -- which is the only way to make the first one.
-  el.new.disabled = isLive(state);
-  el.start.disabled = isLive(state) || !selectedProfile();
-  el.stop.disabled = !isLive(state);
-  el.hint.disabled = !isLive(state);
+  el.new.disabled = !state.connected || isLive(state);
+  el.start.disabled = !state.connected || isLive(state) || !selectedProfile();
+  el.stop.disabled = !state.connected || !isLive(state);
+  el.hint.disabled = !state.connected || !isLive(state);
 
   el.errors.replaceChildren(
     ...state.errors.map((error) => {

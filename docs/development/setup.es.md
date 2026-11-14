@@ -91,7 +91,16 @@ consola, el protocolo o el cliente de captura.
   --far @DEFAULT_MONITOR@
 ```
 
-El backend se selecciona según la plataforma. `--far` acepta un nodo de PipeWire en Linux
+El cliente reconecta cuando se cae un carril: un reinicio del núcleo o un corte de Wi-Fi no
+deben terminar una sesión, y nadie mira la terminal de captura durante una reunión, así que
+un cliente que sale en silencio parece exactamente uno que funciona. Un carril rechazado o
+un token incorrecto **no** se reintentan: eso es un error de configuración, y reintentar
+enterraría el mensaje que lo dice. `--no-reconnect` lo desactiva.
+
+Cuando el enlace no da abasto, se descarta la trama encolada más vieja en lugar de bloquear
+el hilo de captura. El dispositivo sigue produciendo igual, así que atascarse pierde el
+mismo audio de todas formas: en silencio, más tarde y de golpe. El total se registra al
+terminar el carril. `--far` acepta un nodo de PipeWire en Linux
 o un nombre de dispositivo CoreAudio en macOS; ambos admiten `--list-devices` para
 encontrar el correcto.
 

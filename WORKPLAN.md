@@ -76,6 +76,10 @@ LinkedIn draft if there is a lesson worth writing down.
 
 ### Added after WP9, once every queued package was done
 
+- [x] **WP19 — The same question, asked of the network**
+      In tests the socket always works and the core never restarts. In a meeting neither
+      is true.
+
 - [x] **WP18 — Hunt the rest of the fake-hidden defects**
       Three more failure paths that existed only because no stand-in ever misbehaved.
 
@@ -509,3 +513,20 @@ machine with audio devices.
   the Nth call. **The failure modes had to exist in the fakes before the handling could be
   written** — there was no deadline because nothing had ever been slow. Article 10 drafted
   on exactly this. 425 tests pass.
+- `2026-11-13` — WP19 done. Applied the fake-audit question to the capture client and the
+  console, where the kind thing the tests do is simply *having a working network*.
+  **The capture client stalled instead of dropping.** When the link lagged, the pump thread
+  blocked on a full queue. That is the wrong trade for real-time audio: the device keeps
+  producing regardless, so a stalled pump overruns its buffer and loses the same audio
+  anyway — silently, later, and in a burst. It now drops the oldest queued frame and logs
+  how much it lost.
+  **A dropped lane ended the session.** A core restart or a Wi-Fi blip killed the client,
+  and nobody watches the capture terminal during a meeting, so a client that exits quietly
+  looks exactly like one that is working. It reconnects now, with backoff — but only for
+  transport failures. A refused lane or a bad token is a configuration mistake and is not
+  retried, because retrying would bury the message saying so. Reconnecting lanes take a
+  source *factory*, since a closed file cannot be reopened.
+  **The console looked fine while disconnected.** The last state it saw stayed on screen,
+  every control stayed enabled, and a press did nothing with no explanation. There is a
+  `reconnecting…` indicator now and every control is disabled while the socket is down.
+  432 tests pass.

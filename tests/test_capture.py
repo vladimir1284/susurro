@@ -7,6 +7,7 @@ roadmap exists. Nothing in this file pretends otherwise.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import struct
@@ -258,3 +259,120 @@ class TestCli:
         sources = build_sources(args)
         assert set(sources) == {"mic", "far"}
         assert all(isinstance(s, WavSource) for s in sources.values())
+
+
+class TestWhenTheLinkIsUnreliable:
+    """What the test environment does that a real network will not.
+
+    Tests always have a working socket and a core that stays up. A meeting
+    does not: a core restarts, Wi-Fi blips, a laptop sleeps. None of those
+    paths existed until the question was asked directly.
+    """
+
+    async def test_a_lane_reconnects_when_the_core_comes_back(
+        self, core: Core, wav: Path
+    ) -> None:
+        from urllib.parse import urlparse
+
+        from capture.client import stream_lane_forever
+
+        attempts: list[int] = []
+
+        async def router(connection: ServerConnection) -> None:
+            route = urlparse(connection.request.path).path
+            if route == "/capture":
+                attempts.append(1)
+                if len(attempts) == 1:
+                    # The first attempt dies mid-handshake, as a restarting
+                    # core would.
+                    await connection.close(1012, "service restart")
+                    return
+                await core.handle_capture(connection)
+
+        async with serve(router, "127.0.0.1", 0) as server:
+            port = server.sockets[0].getsockname()[1]
+            from capture import client as client_module
+
+            original = client_module.RECONNECT_DELAY_S
+            client_module.RECONNECT_DELAY_S = 0.01
+            try:
+                sent = await stream_lane_forever(
+                    f"ws://127.0.0.1:{port}",
+                    TOKEN,
+                    "s-1",
+                    "far",
+                    lambda: WavSource(wav, speed=0),
+                    max_attempts=5,
+                )
+            finally:
+                client_module.RECONNECT_DELAY_S = original
+
+        assert len(attempts) == 2
+        assert sent == 10
+
+    async def test_a_refused_lane_is_not_retried_forever(
+        self, url: str, core: Core, wav: Path
+    ) -> None:
+        # A bad token or a busy lane is a configuration mistake. Retrying it
+        # would bury the message that says so.
+        from capture.client import stream_lane_forever
+
+        async with websockets.connect(f"{url}/capture?token={TOKEN}") as holder:
+            await holder.send(
+                p.Hello(session_id="s", lane="mic", client="other/0.1").to_json()
+            )
+            await holder.recv()
+            with pytest.raises(CaptureError, match="refused lane"):
+                await stream_lane_forever(
+                    url, TOKEN, "s-1", "mic", lambda: WavSource(wav, speed=0)
+                )
+
+    async def test_a_slow_link_drops_frames_rather_than_stalling(
+        self, core: Core, tmp_path: Path, caplog
+    ) -> None:
+        # Blocking the pump would overrun the device buffer and lose the same
+        # audio anyway -- silently, later, and in a burst.
+        import logging
+        from urllib.parse import urlparse
+
+        long_wav = write_wav(tmp_path / "long.wav", tone(400))
+
+        async def slow_router(connection: ServerConnection) -> None:
+            route = urlparse(connection.request.path).path
+            if route != "/capture":
+                return
+            await connection.recv()
+            await connection.send(p.ready())
+            async for _ in connection:
+                await asyncio.sleep(0.02)  # a link that cannot keep up
+
+        async with serve(slow_router, "127.0.0.1", 0) as server:
+            port = server.sockets[0].getsockname()[1]
+            with caplog.at_level(logging.WARNING, logger="susurro.capture"):
+                await stream_lane(
+                    f"ws://127.0.0.1:{port}",
+                    TOKEN,
+                    "s-1",
+                    "far",
+                    WavSource(long_wav, speed=0),
+                )
+
+        # It finished rather than hanging, and said what it lost.
+        assert any("dropped" in record.message for record in caplog.records)
+
+    def test_reconnection_is_the_default(self) -> None:
+        from capture.main import build_parser
+
+        assert build_parser().parse_args([]).no_reconnect is False
+
+    def test_factories_make_a_fresh_source_each_time(self, wav: Path) -> None:
+        # A closed file cannot be reopened, so a reconnecting lane needs a new
+        # source rather than the one that just ended.
+        from capture.main import build_factories, build_parser
+
+        args = build_parser().parse_args(["--replay-mic", str(wav), "--speed", "0"])
+        factory = build_factories(args)["mic"]
+        first, second = factory(), factory()
+        assert first is not second
+        assert len(list(first.frames())) == 10
+        assert len(list(second.frames())) == 10

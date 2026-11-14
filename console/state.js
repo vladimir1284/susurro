@@ -6,6 +6,10 @@
 // must vanish rather than linger) is testable without a browser.
 
 export const EMPTY = Object.freeze({
+  // Whether the socket is up. Without this the console looks exactly the same
+  // disconnected as connected: the last state it saw stays on screen, the
+  // controls stay enabled, and a press does nothing with no explanation.
+  connected: false,
   session: "idle",
   // What the core will load, so the console can offer a choice instead of
   // requiring the id to be known in advance.
@@ -39,6 +43,9 @@ export function initial() {
 
 export function apply(state, event) {
   switch (event.type) {
+    case "connection":
+      return { ...state, connected: event.connected };
+
     case "state":
       return {
         ...state,
