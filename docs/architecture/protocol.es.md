@@ -90,7 +90,7 @@ lugar de mostrarla.
 desde que la petición llega al modelo: la planificación y el armado del prompt son latencia
 que el usuario también espera. Está presente también en una sugerencia cancelada, cuando la
 generación llegó tan lejos: una sugerencia abandonada igualmente midió el modelo. Es la
-cifra en la que está enunciada [la puerta de M2](roadmap.md#m2-sugerencia-manual).
+cifra en la que está enunciada [la puerta de M2](../roadmap.md#m2-sugerencia-manual).
 
 ### De la consola al núcleo
 

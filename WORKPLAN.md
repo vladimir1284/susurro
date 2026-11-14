@@ -461,3 +461,8 @@ machine with audio devices.
   broken. That threshold is M2's gate, and watching it live is the only way to know a call
   is inside budget rather than discovering afterwards that every hint arrived too late to
   read. 416 tests pass.
+- `2026-11-13` — Process failure worth recording: the previous commit ran
+  `mkdocs build --strict` *after* `git commit`, in the same shell block, so a broken
+  relative link went in. `roadmap.md` from a page in `docs/architecture/` needs `../`. The
+  strict build caught it immediately — one second later than it should have. Checks belong
+  before the commit in the same chain, not beside it.

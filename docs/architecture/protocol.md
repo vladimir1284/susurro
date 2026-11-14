@@ -87,7 +87,7 @@ the other party interrupted. The console discards the partial hint rather than s
 the request reaching the model, since scheduling and prompt assembly are latency the user
 waits through too. It is present on a cancelled hint as well, when generation got that far:
 an abandoned hint still measured the model. This is the number
-[M2's gate](roadmap.md#m2-manual-hint) is stated in.
+[M2's gate](../roadmap.md#m2-manual-hint) is stated in.
 
 ### Console to core
 
