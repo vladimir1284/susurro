@@ -63,7 +63,7 @@ mlx_lm.server --model <repo> --port 8080
 git clone https://github.com/vladimir1284/susurro
 cd susurro
 python3 -m venv .venv && .venv/bin/pip install -e ".[bench]"
-.venv/bin/python -m bench.run \
+.venv/bin/susurro-bench \
   --label llama-cpp \
   --audio samples/interview-30s.wav \
   --server-pid "$(pgrep -f llama-server)"

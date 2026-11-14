@@ -22,7 +22,7 @@ git clone https://github.com/vladimir1284/susurro
 cd susurro
 python3 -m venv .venv
 .venv/bin/pip install -e ".[core]"
-.venv/bin/python -m core.main
+.venv/bin/susurro-core
 ```
 
 It prints a console URL with a token in it. Open that on the same machine.
@@ -72,7 +72,7 @@ Leave `[session] record = false` unless you want transcripts written to disk. It
 default deliberately.
 
 ```bash
-.venv/bin/python -m core.main --config core.toml
+.venv/bin/susurro-core --config core.toml
 ```
 
 The first run downloads the speech model, which takes a few minutes. It happens when you
@@ -87,8 +87,8 @@ it. 16 GB is enough for the models or for a video call, not comfortably for both
 === "Linux"
 
     ```bash
-    .venv/bin/python -m capture.main --list-devices
-    .venv/bin/python -m capture.main \
+    .venv/bin/susurro-capture --list-devices
+    .venv/bin/susurro-capture \
       --core ws://<core-host>:8723 --token "$SUSURRO_TOKEN" \
       --mic <your microphone node> \
       --far <the monitor of your output sink>
@@ -106,7 +106,7 @@ it. 16 GB is enough for the models or for a video call, not comfortably for both
 === "No audio devices"
 
     ```bash
-    .venv/bin/python -m capture.main \
+    .venv/bin/susurro-capture \
       --core ws://localhost:8723 --token "$SUSURRO_TOKEN" \
       --replay-mic me.wav --replay-far them.wav
     ```

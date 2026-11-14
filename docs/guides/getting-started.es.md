@@ -24,7 +24,7 @@ git clone https://github.com/vladimir1284/susurro
 cd susurro
 python3 -m venv .venv
 .venv/bin/pip install -e ".[core]"
-.venv/bin/python -m core.main
+.venv/bin/susurro-core
 ```
 
 Imprime una URL de consola con un token dentro. Ábrela en la misma máquina.
@@ -76,7 +76,7 @@ Deja `[session] record = false` salvo que quieras transcripciones escritas a dis
 apagado por defecto a propósito.
 
 ```bash
-.venv/bin/python -m core.main --config core.toml
+.venv/bin/susurro-core --config core.toml
 ```
 
 La primera ejecución descarga el modelo de voz, lo que tarda unos minutos. Ocurre al pulsar
@@ -92,8 +92,8 @@ ambos.
 === "Linux"
 
     ```bash
-    .venv/bin/python -m capture.main --list-devices
-    .venv/bin/python -m capture.main \
+    .venv/bin/susurro-capture --list-devices
+    .venv/bin/susurro-capture \
       --core ws://<host-del-nucleo>:8723 --token "$SUSURRO_TOKEN" \
       --mic <tu nodo de micrófono> \
       --far <el monitor de tu sink de salida>
@@ -111,7 +111,7 @@ ambos.
 === "Sin dispositivos de audio"
 
     ```bash
-    .venv/bin/python -m capture.main \
+    .venv/bin/susurro-capture \
       --core ws://localhost:8723 --token "$SUSURRO_TOKEN" \
       --replay-mic yo.wav --replay-far ellos.wav
     ```

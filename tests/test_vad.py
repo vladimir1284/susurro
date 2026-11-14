@@ -11,18 +11,16 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 from pathlib import Path
-from urllib.parse import urlparse
 
 import numpy as np
 import pytest
 import websockets
-from websockets.asyncio.server import ServerConnection, serve
 
 from capture.codec import FRAME_BYTES, OpusEncoder
 from core import protocol as p
 from core.llm.fake import CannedHintGenerator
 from core.main import build_detectors
-from core.server import Core
+from core.server import Core, serve_core
 from core.session.profiles import ProfileStore
 from core.stt.fake import ScriptedRecognizer, ScriptedUtterance
 from core.vad import (
@@ -228,16 +226,7 @@ async def core() -> Core:
 
 @pytest.fixture
 async def url(core: Core) -> AsyncIterator[str]:
-    async def router(connection: ServerConnection) -> None:
-        route = urlparse(connection.request.path).path
-        if route == "/capture":
-            await core.handle_capture(connection)
-        elif route == "/console":
-            await core.handle_console(connection)
-        else:
-            await connection.close(1003, "unknown endpoint")
-
-    async with serve(router, "127.0.0.1", 0) as server:
+    async with serve_core(core, "127.0.0.1", 0) as server:
         yield f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}"
 
 

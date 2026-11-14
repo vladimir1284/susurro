@@ -15,6 +15,13 @@ bench = ["httpx>=0.27", "faster-whisper>=1.1", "numpy>=1.26"]
 capture = ["websockets>=13", "opuslib>=3.0.1"]
 dev = ["onnxruntime>=1.16.1", "numpy>=1.26", "pytest>=8", "pytest-asyncio>=0.24", "pytest-playwright>=0.5", "ruff>=0.6"]
 
+[project.scripts]
+# argparse has announced these names since the beginning; nothing declared
+# them, so `susurro-core` was "command not found" in a shell and in the docs.
+susurro-core = "core.main:main"
+susurro-capture = "capture.main:main"
+susurro-bench = "bench.run:main"
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

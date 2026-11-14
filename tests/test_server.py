@@ -20,12 +20,11 @@ from pathlib import Path
 
 import pytest
 import websockets
-from websockets.asyncio.server import ServerConnection, serve
 
 from capture.codec import FRAME_SAMPLES, OpusEncoder
 from core import protocol as p
 from core.llm.fake import CannedHintGenerator
-from core.server import Core
+from core.server import Core, serve_core
 from core.session.history import HistoryStore, Line
 from core.session.profiles import ProfileStore
 from core.stt.fake import ScriptedRecognizer, ScriptedUtterance
@@ -62,18 +61,9 @@ async def core() -> Core:
 
 @pytest.fixture
 async def url(core: Core) -> AsyncIterator[str]:
-    async def router(connection: ServerConnection) -> None:
-        from urllib.parse import urlparse
-
-        route = urlparse(connection.request.path).path
-        if route == "/capture":
-            await core.handle_capture(connection)
-        elif route == "/console":
-            await core.handle_console(connection)
-        else:
-            await connection.close(1003, "unknown endpoint")
-
-    async with serve(router, "127.0.0.1", 0) as server:
+    # The server's own routing, not a copy of it: three test modules used to
+    # reimplement this, so the real one was never executed by anything.
+    async with serve_core(core, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
         yield f"ws://127.0.0.1:{port}"
 
@@ -1195,3 +1185,79 @@ class TestModelServerStatus:
         await console.send(json.dumps({"type": "session.stop"}))
         assert (await await_phase(console, "configured"))["llm"] == "unavailable"
         await console.close()
+
+
+class TestCorruptAudio:
+    async def test_a_packet_that_will_not_decode_is_reported_not_fatal(
+        self, url: str, core: Core
+    ) -> None:
+        # A frame can be well-formed and still not be Opus -- a wrong codec, a
+        # truncated packet, a client bug. One bad packet must not take the lane
+        # down for the rest of a call.
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+
+        async with websockets.connect(f"{url}/capture?token={TOKEN}") as capture:
+            await capture.send(
+                p.Hello(session_id="s", lane="far", client="test/0.1").to_json()
+            )
+            await capture.recv()
+            await capture.send(
+                p.AudioFrame(timestamp_us=1, payload=b"\xff" * 300).encode()
+            )
+            error = json.loads(await capture.recv())
+            assert error["code"] == "decode_failed"
+
+            # Still up, and good audio afterwards still works.
+            encoder = OpusEncoder()
+            await capture.send(opus_frame(encoder, 1))
+            assert core.state.lanes["far"] == "up"
+
+        await console.close()
+
+
+class TestRouting:
+    """The server's own routing, now that the tests drive it rather than a copy."""
+
+    async def test_an_unknown_path_is_refused(self, url: str) -> None:
+        async with websockets.connect(f"{url}/nope?token={TOKEN}") as ws:
+            with pytest.raises(websockets.exceptions.ConnectionClosed):
+                await ws.recv()
+            assert ws.close_code == 1003
+
+    async def test_the_console_is_served_over_http_from_the_same_port(
+        self, url: str
+    ) -> None:
+        # One address to remember, and no CORS to configure.
+        #
+        # Fetched with an async client on purpose: a blocking urllib call here
+        # stalls the event loop the server is running on, so it cannot answer
+        # and the test deadlocks until the timeout. The same mistake the
+        # recognizer was making, in a test for the fix.
+        import httpx
+
+        http = url.replace("ws://", "http://")
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{http}/state.js", timeout=5)
+        assert response.status_code == 200
+        assert "javascript" in response.headers["content-type"]
+
+
+class TestEntryPoints:
+    @pytest.mark.parametrize(
+        "name, target",
+        [
+            ("susurro-core", "core.main:main"),
+            ("susurro-capture", "capture.main:main"),
+            ("susurro-bench", "bench.run:main"),
+        ],
+    )
+    def test_every_announced_command_exists(self, name: str, target: str) -> None:
+        # argparse has announced these names since the beginning and nothing
+        # declared them, so `susurro-core` was "command not found" in a shell
+        # and in the installation guide.
+        import tomllib
+
+        root = Path(__file__).resolve().parent.parent
+        config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+        assert config["project"]["scripts"][name] == target

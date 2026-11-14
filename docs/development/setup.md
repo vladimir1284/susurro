@@ -55,7 +55,7 @@ cd susurro
 python3 -m venv .venv
 .venv/bin/pip install -e ".[core,whisper,openai]"
 cp core.toml.example core.toml   # then edit it
-.venv/bin/python -m core.main --config core.toml
+.venv/bin/susurro-core --config core.toml
 ```
 
 It prints the console URL, token included, and the profiles it found.
@@ -83,7 +83,7 @@ the console, the protocol or the capture client.
 ## Running the capture client
 
 ```bash
-.venv/bin/python -m capture.main \
+.venv/bin/susurro-capture \
   --core ws://mac-mini.local:8723 \
   --token "$SUSURRO_TOKEN" \
   --mic default \
@@ -107,7 +107,7 @@ With no audio devices to hand — a container, a remote box, CI — replay a pai
 instead. They must be 16 kHz mono 16-bit:
 
 ```bash
-.venv/bin/python -m capture.main \
+.venv/bin/susurro-capture \
   --core ws://localhost:8723 --token "$SUSURRO_TOKEN" \
   --replay-mic me.wav --replay-far them.wav
 ```

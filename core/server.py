@@ -692,9 +692,14 @@ def serve_console(root: Path, request: Request) -> Response | None:
     )
 
 
-async def run(
-    core: Core, host: str, port: int, console_root: Path = CONSOLE_ROOT
-) -> None:
+def make_router(core: Core):
+    """Route a connection to the endpoint its path names.
+
+    Exposed rather than nested inside `run` so the tests drive the same
+    routing the server does. Three test modules had their own copy of this,
+    which meant the real one was never executed by anything.
+    """
+
     async def router(connection: ServerConnection) -> None:
         route = urlparse(connection.request.path).path
         if route == "/capture":
@@ -704,11 +709,25 @@ async def run(
         else:
             await connection.close(1003, "unknown endpoint")
 
+    return router
+
+
+def serve_core(
+    core: Core, host: str, port: int, console_root: Path = CONSOLE_ROOT
+):
+    """The server as an async context manager, for `run` and for tests."""
+
     def process_request(connection: ServerConnection, request: Request) -> Response | None:
         del connection
         return serve_console(console_root, request)
 
-    async with serve(router, host, port, process_request=process_request):
+    return serve(make_router(core), host, port, process_request=process_request)
+
+
+async def run(
+    core: Core, host: str, port: int, console_root: Path = CONSOLE_ROOT
+) -> None:
+    async with serve_core(core, host, port, console_root):
         log.info("listening on ws://%s:%d", host, port)
         await asyncio.Future()
 

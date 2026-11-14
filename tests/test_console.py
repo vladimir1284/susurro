@@ -17,14 +17,12 @@ import asyncio
 import threading
 from collections.abc import Iterator
 from pathlib import Path
-from urllib.parse import urlparse
 
 import pytest
 from playwright.sync_api import Page, expect, sync_playwright
-from websockets.asyncio.server import ServerConnection, serve
 
 from core.llm.fake import CannedHintGenerator
-from core.server import Core, serve_console
+from core.server import Core, serve_core
 from core.session.profiles import ProfileStore
 from core.stt.fake import ScriptedRecognizer, ScriptedUtterance
 
@@ -192,22 +190,8 @@ def live_console() -> Iterator[tuple[str, Core]]:
     loop = asyncio.new_event_loop()
     shutdown = asyncio.Event()
 
-    async def router(connection: ServerConnection) -> None:
-        route = urlparse(connection.request.path).path
-        if route == "/capture":
-            await core.handle_capture(connection)
-        elif route == "/console":
-            await core.handle_console(connection)
-        else:
-            await connection.close(1003, "unknown endpoint")
-
     async def main() -> None:
-        async with serve(
-            router,
-            "127.0.0.1",
-            0,
-            process_request=lambda _conn, request: serve_console(CONSOLE, request),
-        ) as server:
+        async with serve_core(core, "127.0.0.1", 0, CONSOLE) as server:
             port.append(server.sockets[0].getsockname()[1])
             ready.set()
             await shutdown.wait()
@@ -235,22 +219,8 @@ def _serve(core: Core) -> Iterator[str]:
     loop = asyncio.new_event_loop()
     shutdown = asyncio.Event()
 
-    async def router(connection: ServerConnection) -> None:
-        route = urlparse(connection.request.path).path
-        if route == "/capture":
-            await core.handle_capture(connection)
-        elif route == "/console":
-            await core.handle_console(connection)
-        else:
-            await connection.close(1003, "unknown endpoint")
-
     async def main() -> None:
-        async with serve(
-            router,
-            "127.0.0.1",
-            0,
-            process_request=lambda _conn, request: serve_console(CONSOLE, request),
-        ) as server:
+        async with serve_core(core, "127.0.0.1", 0, CONSOLE) as server:
             port.append(server.sockets[0].getsockname()[1])
             ready.set()
             await shutdown.wait()

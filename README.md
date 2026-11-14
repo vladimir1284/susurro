@@ -65,7 +65,7 @@ protocol and the client were developed on a machine that cannot host a model at 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e ".[core,dev]"
-.venv/bin/python -m core.main --profiles tests/fixtures/profiles
+.venv/bin/susurro-core --profiles tests/fixtures/profiles
 ```
 
 For the real thing — models, audio capture, a phone as the console — see

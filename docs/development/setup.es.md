@@ -56,7 +56,7 @@ cd susurro
 python3 -m venv .venv
 .venv/bin/pip install -e ".[core,whisper,openai]"
 cp core.toml.example core.toml   # y edítalo
-.venv/bin/python -m core.main --config core.toml
+.venv/bin/susurro-core --config core.toml
 ```
 
 Imprime la URL de la consola, token incluido, y los perfiles que encontró.
@@ -84,7 +84,7 @@ consola, el protocolo o el cliente de captura.
 ## Ejecutar el cliente de captura
 
 ```bash
-.venv/bin/python -m capture.main \
+.venv/bin/susurro-capture \
   --core ws://mac-mini.local:8723 \
   --token "$SUSURRO_TOKEN" \
   --mic default \
@@ -108,7 +108,7 @@ Sin dispositivos de audio a mano —un contenedor, una máquina remota, CI— re
 de ficheros WAV en su lugar. Tienen que ser 16 kHz mono de 16 bits:
 
 ```bash
-.venv/bin/python -m capture.main \
+.venv/bin/susurro-capture \
   --core ws://localhost:8723 --token "$SUSURRO_TOKEN" \
   --replay-mic yo.wav --replay-far ellos.wav
 ```

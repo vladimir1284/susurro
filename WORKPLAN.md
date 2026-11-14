@@ -76,6 +76,10 @@ LinkedIn draft if there is a lesson worth writing down.
 
 ### Added after WP9, once every queued package was done
 
+- [x] **WP21 — Loose ends, then stop**
+      Entry points that were only ever announced, one router instead of four, and the
+      corrupt-packet path nothing had exercised.
+
 - [x] **WP20 — Report what the models are actually doing**
       `state` claimed `llm: "ready"` unconditionally, including with nothing listening.
 
@@ -549,3 +553,34 @@ machine with audio devices.
   pressing Hint does nothing visible and the user presses it again.
   442 tests pass. **This vein is close to exhausted**: the three hardcoded-status defects
   are now all fixed, and what is left of real value needs the Mac mini.
+- `2026-11-13` — WP21 done, and **this is where the loop stops.** A survey first: 90%
+  coverage, no TODOs anywhere, every module has tests. Three real loose ends, all small:
+  1. `argparse` had announced `susurro-core`, `susurro-capture` and `susurro-bench` since
+     the beginning and nothing declared them, so those commands did not exist — in a shell
+     or in the installation guide that told people to run them. `[project.scripts]` now
+     declares all three, and the docs use them.
+  2. **Four copies of the server's router**, one real and three in test modules, which
+     meant the real one was never executed by anything. `make_router` and `serve_core` are
+     exposed and the tests drive them, taking server coverage from 92% to 95% by deleting
+     code rather than adding it.
+  3. The corrupt-packet path — a frame that is well formed but is not Opus — emitted
+     `decode_failed` and had never been tested. It is now, along with the lane surviving it.
+  Writing that last test I made the exact mistake I had just fixed in the server: a
+  blocking `urllib` call inside an async test stalled the event loop the server was running
+  on, so it could not answer and the test deadlocked. Noted in the test, in those words.
+  448 tests pass.
+
+## Stopping here
+
+Everything buildable without the Mac mini is built. What remains needs hardware, and
+guessing at it would be worse than leaving it:
+
+- **M0.** Every performance number in these docs is still an estimate derived from
+  specifications. The harness is written, dry-run, and waiting.
+- **M3.** `capture/backends/pipewire.py` has still never been executed.
+- **Whether the hints are any good.** Not measurable here, at all.
+
+The loop is stopping rather than inventing work. Ten article drafts are in `articles/`,
+none posted. The `docs` workflow has been red since Friday afternoon for one reason: the
+Cloudflare token lacks `Edit Cloudflare Workers`, so the documentation site has never
+deployed.
