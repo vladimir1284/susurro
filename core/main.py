@@ -47,7 +47,16 @@ def build_recognizer(config: dict[str, Any]) -> Recognizer:
             device=config.get("device", "auto"),
             compute_type=config.get("compute_type", "int8"),
         )
-    raise SystemExit(f"unknown stt backend {kind!r}: expected 'fake' or 'whisper'")
+    if kind == "whispercpp":
+        from core.stt.whispercpp import WhisperCppRecognizer
+
+        return WhisperCppRecognizer(
+            language=config.get("language", "en"),
+            base_url=config.get("base_url", "http://127.0.0.1:8081"),
+        )
+    raise SystemExit(
+        f"unknown stt backend {kind!r}: expected 'fake', 'whisper' or 'whispercpp'"
+    )
 
 
 def build_generator(config: dict[str, Any]) -> HintGenerator:

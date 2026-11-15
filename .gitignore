@@ -32,3 +32,6 @@ bench/results/*.json
 
 # Real personal profiles used as a local test bank. Never committed.
 tests/fixtures/profiles/local/
+
+# Local configuration; holds the shared token
+core.toml
