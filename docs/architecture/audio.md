@@ -24,7 +24,7 @@ express cleanly on a mixed stream.
 
 | Platform | `mic` | `far` |
 |---|---|---|
-| Linux | PipeWire source | PipeWire monitor of the default sink |
+| Linux | PulseAudio source (`parec`), or PipeWire | Monitor of the default sink (`@DEFAULT_MONITOR@`) |
 | macOS | CoreAudio input | Loopback device ([BlackHole](https://github.com/ExistentialAudio/BlackHole) or equivalent) |
 
 macOS has no system loopback of its own, so a virtual audio device is a setup

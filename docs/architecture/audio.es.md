@@ -24,7 +24,7 @@ detectar, e imposible de expresar limpiamente sobre un flujo mezclado.
 
 | Plataforma | `mic` | `far` |
 |---|---|---|
-| Linux | Fuente de PipeWire | Monitor PipeWire del sink por defecto |
+| Linux | Fuente de PulseAudio (`parec`), o PipeWire | Monitor del sink por defecto (`@DEFAULT_MONITOR@`) |
 | macOS | Entrada de CoreAudio | Dispositivo de loopback ([BlackHole](https://github.com/ExistentialAudio/BlackHole) o equivalente) |
 
 macOS no tiene loopback de sistema propio, así que un dispositivo de audio virtual es un

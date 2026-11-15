@@ -49,6 +49,7 @@ The plumbing is built and tested. The measurements are not taken.
 | Wire protocol | Done — `core/protocol.py` |
 | Core server, session state, profiles | Done — `core/server.py`, `core/session/` |
 | Capture client, Opus, WAV replay | Done — `capture/` |
+| PulseAudio capture (`parec`) | Done — `capture/backends/pulse.py`. Run against a real microphone and monitor; **never used in a real meeting.** |
 | PipeWire capture | **Written, never executed.** No audio devices on the development machine. |
 | Console | Done — `console/`, driven by browser tests |
 | Speech backend (faster-whisper) | Done — `core/stt/whisper.py` |

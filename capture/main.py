@@ -37,6 +37,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="replay speed; 1.0 is real time, 0 is as fast as possible",
     )
     parser.add_argument(
+        "--backend",
+        choices=["auto", "pulse", "pipewire"],
+        default="auto",
+        help="audio server to capture from; auto uses PulseAudio (or PipeWire's "
+        "PulseAudio layer) when it answers, otherwise PipeWire",
+    )
+    parser.add_argument(
         "--list-devices", action="store_true", help="print available audio nodes and exit"
     )
     parser.add_argument(
@@ -46,6 +53,31 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser
+
+
+def resolve_backend(choice: str) -> str:
+    """``auto`` becomes ``pulse`` when a PulseAudio-compatible server answers.
+
+    PulseAudio is asked first because it is what holds the devices on most
+    desktops, and PipeWire's compatibility layer answers the same questions.
+    The native PipeWire backend is the fallback, not the default: it has the
+    least mileage.
+    """
+    if choice != "auto":
+        return choice
+    from capture.backends import pulse
+
+    return "pulse" if pulse.available() else "pipewire"
+
+
+def device_source_class(choice: str) -> type:
+    if resolve_backend(choice) == "pulse":
+        from capture.backends.pulse import PulseSource
+
+        return PulseSource
+    from capture.backends.pipewire import PipeWireSource
+
+    return PipeWireSource
 
 
 def build_sources(args: argparse.Namespace) -> dict[Lane, AudioSource]:
@@ -67,12 +99,12 @@ def build_factories(args: argparse.Namespace) -> dict[Lane, Callable[[], AudioSo
     if sources:
         return sources
 
-    from capture.backends.pipewire import PipeWireSource
+    source_class = device_source_class(args.backend)
 
     if args.mic:
-        sources["mic"] = lambda: PipeWireSource(args.mic, label="mic")
+        sources["mic"] = lambda: source_class(args.mic, label="mic")
     if args.far:
-        sources["far"] = lambda: PipeWireSource(args.far, label="far")
+        sources["far"] = lambda: source_class(args.far, label="far")
     if not sources:
         raise SourceError(
             "nothing to capture: pass --mic/--far for devices, or "
@@ -90,9 +122,15 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.list_devices:
-        from capture.backends.pipewire import list_devices
-
-        print(list_devices())
+        try:
+            if resolve_backend(args.backend) == "pulse":
+                from capture.backends.pulse import list_devices
+            else:
+                from capture.backends.pipewire import list_devices
+            print(list_devices())
+        except SourceError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
         return 0
 
     session_id = args.session_id or datetime.now(UTC).strftime(

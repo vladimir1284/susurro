@@ -24,7 +24,7 @@ susurro/
 │   ├── codec.py       # codificación Opus
 │   ├── client.py      # un WebSocket por carril
 │   ├── main.py
-│   └── backends/      # file.py (reproducción), pipewire.py (nunca ejecutado)
+│   └── backends/      # file.py (reproducción), pulse.py, pipewire.py (nunca ejecutado)
 ├── console/           # interfaz web estática, sin build; state.js es puro
 ├── bench/             # arnés M0: metrics.py, report.py, run.py
 │   └── results/       # mediciones versionadas, un fichero por ejecución
@@ -100,9 +100,15 @@ enterraría el mensaje que lo dice. `--no-reconnect` lo desactiva.
 Cuando el enlace no da abasto, se descarta la trama encolada más vieja en lugar de bloquear
 el hilo de captura. El dispositivo sigue produciendo igual, así que atascarse pierde el
 mismo audio de todas formas: en silencio, más tarde y de golpe. El total se registra al
-terminar el carril. `--far` acepta un nodo de PipeWire en Linux
-o un nombre de dispositivo CoreAudio en macOS; ambos admiten `--list-devices` para
-encontrar el correcto.
+terminar el carril. En Linux, `--backend auto` (el valor por defecto) usa PulseAudio, o su
+capa en PipeWire, cuando `pactl` responde, y PipeWire nativo si no; `--backend
+pulse|pipewire` fuerza uno. `--far` acepta un nombre de fuente en Linux
+(`@DEFAULT_MONITOR@` es el monitor del sink por defecto) o un nombre de dispositivo
+CoreAudio en macOS; ambos admiten `--list-devices` para encontrar el correcto.
+
+El monitor de un sink inactivo no produce datos, así que el backend de PulseAudio rellena
+un carril silencioso con silencio al ritmo del reloj. Sin eso, el detector nunca ve la
+pausa que termina un turno.
 
 Sin dispositivos de audio a mano —un contenedor, una máquina remota, CI— reproduce un par
 de ficheros WAV en su lugar. Tienen que ser 16 kHz mono de 16 bits:

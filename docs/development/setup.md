@@ -24,7 +24,7 @@ susurro/
 │   ├── codec.py       # Opus encoding
 │   ├── client.py      # one WebSocket per lane
 │   ├── main.py
-│   └── backends/      # file.py (replay), pipewire.py (never executed)
+│   └── backends/      # file.py (replay), pulse.py, pipewire.py (never executed)
 ├── console/           # static web UI, no build step; state.js is pure
 ├── bench/             # M0 harness: metrics.py, report.py, run.py
 │   └── results/       # committed measurements, one file per run
@@ -100,8 +100,15 @@ When the link cannot keep up, the oldest queued frame is dropped rather than blo
 capture thread. The device keeps producing regardless, so stalling loses the same audio
 anyway — silently, later, and in a burst. The count is logged at the end of the lane.
 
-The backend is selected from the platform. `--far` takes a PipeWire node on Linux or a
-CoreAudio device name on macOS; both accept `--list-devices` to find the right one.
+The backend is selected from the platform. On Linux, `--backend auto` (the default) uses
+PulseAudio, or PipeWire's PulseAudio layer, when `pactl` answers, and native PipeWire
+otherwise; `--backend pulse|pipewire` forces one. `--far` takes a source name on Linux
+(`@DEFAULT_MONITOR@` is the monitor of the default sink) or a CoreAudio device name on
+macOS; both accept `--list-devices` to find the right one.
+
+A monitor of an idle sink produces no data at all, so the PulseAudio backend pads a quiet
+lane with silence at clock pace. Without it the detector never sees the pause that ends a
+turn.
 
 With no audio devices to hand — a container, a remote box, CI — replay a pair of WAV files
 instead. They must be 16 kHz mono 16-bit:
