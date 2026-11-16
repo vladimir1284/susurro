@@ -151,7 +151,9 @@ press **Space**.
 | The console header says `reconnecting…` | The core is unreachable. Every control is disabled until the socket is back. |
 | `lane_busy` | Something is already connected on that lane — usually a capture client you forgot to stop. |
 | Transcript is empty but lanes are up | Wrong `far` device: you are capturing silence. `--list-devices` and try the other monitor. |
-| Transcript lags further and further behind | The speech model is slower than real time on this hardware. Try a smaller one, and run the benchmark. |
+| Transcript lags behind, or the core logs `lane … is Ns behind real time` | The speech model is slower than real time at the moment. The core already drops partials to keep the finals current, so what you see is sparser partials, not a growing delay. If it persists, try a smaller model and run the benchmark. A model server that shares its machine with something heavy can be several times slower than it was an hour earlier; check what else is running there. |
+| `stt_failed` with `timed out` | A request to the speech server took longer than 30 s: it was overloaded or stuck. Check the server's own log. |
+| The `mic` lane transcribes the other party's words | Speakers: the microphone hears them. Use headphones. If you cannot, expect short garbled lines on the `mic` lane while they talk, and sometimes "thanks for watching"-style filler; the core discards transcriptions that could not have been spoken, but not these. |
 | Hints take many seconds | Almost certainly prefill. See [Inference](../architecture/inference.md#prompt-cache-is-a-requirement-not-an-optimization). |
 | Hints are in the wrong language | The profile's language, not the core's. A session takes it from the profile. |
 | No hint when the other party stops | `[vad] backend = "off"`, or `silero-vad` is not installed and the energy fallback is not hearing them. |

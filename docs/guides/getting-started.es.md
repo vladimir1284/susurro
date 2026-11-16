@@ -155,7 +155,9 @@ pulsas **Espacio**.
 | La cabecera de la consola dice `reconnecting…` | El núcleo no es alcanzable. Todos los controles quedan desactivados hasta que vuelva el socket. |
 | `lane_busy` | Ya hay algo conectado en ese carril, normalmente un cliente de captura que olvidaste parar. |
 | La transcripción está vacía con los carriles arriba | Dispositivo `far` equivocado: estás capturando silencio. `--list-devices` y prueba el otro monitor. |
-| La transcripción se atrasa cada vez más | El modelo de voz va más lento que el tiempo real en ese hardware. Prueba uno más pequeño y ejecuta el benchmark. |
+| La transcripción se atrasa, o el core registra `lane … is Ns behind real time` | El modelo de voz va ahora más lento que el tiempo real. El core ya descarta parciales para mantener los finales al día, así que lo que ves son parciales más escasos, no un retraso que crece. Si persiste, prueba un modelo más pequeño y ejecuta el benchmark. Un servidor de modelo que comparte máquina con algo pesado puede ir varias veces más lento que una hora antes; mira qué más corre ahí. |
+| `stt_failed` con `timed out` | Una petición al servidor de voz tardó más de 30 s: estaba saturado o atascado. Mira el log del propio servidor. |
+| El carril `mic` transcribe las palabras de la otra parte | Altavoces: el micrófono las oye. Usa auriculares. Si no puedes, espera líneas cortas y confusas en el carril `mic` mientras ella habla, y a veces relleno tipo "gracias por ver el vídeo"; el core descarta transcripciones que no pudieron pronunciarse, pero no estas. |
 | Las sugerencias tardan segundos | Casi seguro el prefill. Ver [Inferencia](../architecture/inference.md#la-cache-de-prompt-es-un-requisito-no-una-optimizacion). |
 | Las sugerencias salen en el idioma equivocado | El idioma del perfil, no el del núcleo. Una sesión lo toma del perfil. |
 | No hay sugerencia cuando la otra parte calla | `[vad] backend = "off"`, o `silero-vad` sin instalar y el respaldo por energía no los oye. |
