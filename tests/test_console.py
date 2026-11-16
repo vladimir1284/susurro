@@ -392,10 +392,23 @@ class TestConsolePage:
         # The console used to need the profile id in the query string, which
         # meant hand-editing a URL before a call.
         url, _ = live_console
-        self.open(page, url)
+        self.open(page, url, profile="en-technical-backend")
         options = page.locator("#profile option")
-        expect(options).to_have_count(2)
-        expect(options.first).to_contain_text("Senior backend")
+        expect(options).to_have_count(3)  # the prompt, then the two profiles
+        expect(options.nth(1)).to_contain_text("Senior backend")
+
+    def test_no_profile_is_chosen_for_the_user(self, page: Page, live_console) -> None:
+        # The profile fixes the language and the hint mode. One preselected for
+        # convenience once started a Spanish call in English; choosing is the
+        # point, so Start stays disabled until it has been done on purpose.
+        url, _ = live_console
+        page.goto(f"{url}/?token={TOKEN}")
+        expect(page.locator("#session-pill")).to_have_text("idle")
+        expect(page.locator("#profile option")).to_have_count(3)
+        expect(page.locator("#profile")).to_have_value("")
+        expect(page.locator("#start")).to_be_disabled()
+        page.select_option("#profile", "es-business-industrial")
+        expect(page.locator("#start")).to_be_enabled()
 
     def test_start_is_refused_when_there_is_nothing_to_start(
         self, page: Page, empty_console
@@ -415,7 +428,7 @@ class TestConsolePage:
         # listed, then removed before the session starts. A rename or a tidy-up
         # between opening the console and pressing Start does exactly this.
         url, directory = disappearing_console
-        page.goto(f"{url}/?token={TOKEN}")
+        page.goto(f"{url}/?token={TOKEN}&profile=en-technical-backend")
         expect(page.locator("#start")).to_be_enabled()
         (directory / "en-technical-backend.json").unlink()
         page.locator("#start").click()
@@ -445,7 +458,7 @@ class TestProfilePicker:
         # that disagrees with it. Sending the query string's value instead
         # would put the console in a position to be rejected.
         url, core = live_console
-        page.goto(f"{url}/?token={TOKEN}&mode=business")
+        page.goto(f"{url}/?token={TOKEN}&profile=en-technical-backend&mode=business")
         expect(page.locator("#start")).to_be_enabled()
         page.select_option("#profile", "es-business-industrial")
         page.locator("#start").click()
@@ -456,7 +469,7 @@ class TestProfilePicker:
         # Changing it mid-session would invalidate the prefilled cache, which
         # the core refuses. Disabling it is friendlier than explaining that.
         url, _ = live_console
-        page.goto(f"{url}/?token={TOKEN}")
+        page.goto(f"{url}/?token={TOKEN}&profile=en-technical-backend")
         expect(page.locator("#start")).to_be_enabled()
         page.locator("#start").click()
         expect(page.locator("#session-pill")).to_have_text("live")
@@ -488,7 +501,7 @@ class TestProfileEditor:
             yield url, core
 
     def open_editor(self, page: Page, url: str) -> None:
-        page.goto(f"{url}/?token={TOKEN}")
+        page.goto(f"{url}/?token={TOKEN}&profile=en-technical-backend")
         expect(page.locator("#start")).to_be_enabled()
         page.locator("#edit").click()
         expect(page.locator("#editor")).to_be_visible()
@@ -502,7 +515,7 @@ class TestProfileEditor:
         # The console's job is to be glanceable. A form is the opposite of
         # that, so it stays out of the way until someone wants it.
         url, _ = writable_console
-        page.goto(f"{url}/?token={TOKEN}")
+        page.goto(f"{url}/?token={TOKEN}&profile=en-technical-backend")
         expect(page.locator("#start")).to_be_enabled()
         expect(page.locator("#editor")).to_be_hidden()
 
@@ -525,7 +538,7 @@ class TestProfileEditor:
         page.locator("#editor-save").click()
 
         expect(page.locator("#editor-status")).to_have_text("saved")
-        expect(page.locator("#profile option").first).to_contain_text(
+        expect(page.locator("#profile option").nth(1)).to_contain_text(
             "Renamed from the console"
         )
         saved = core.profiles.load("en-technical-backend")
@@ -568,7 +581,7 @@ class TestProfileEditor:
         # was in flight, and the reply overwrote whatever had been typed. The
         # save then wrote the old label back and reported success.
         url, _ = writable_console
-        page.goto(f"{url}/?token={TOKEN}")
+        page.goto(f"{url}/?token={TOKEN}&profile=en-technical-backend")
         expect(page.locator("#start")).to_be_enabled()
         page.locator("#edit").click()
         expect(page.locator("#editor-label")).to_be_enabled()
@@ -604,7 +617,7 @@ class TestSessionHistory:
             yield url, core
 
     def open_history(self, page: Page, url: str) -> None:
-        page.goto(f"{url}/?token={TOKEN}")
+        page.goto(f"{url}/?token={TOKEN}&profile=en-technical-backend")
         expect(page.locator("#start")).to_be_enabled()
         page.locator("#history").click()
         expect(page.locator("#history-panel")).to_be_visible()
@@ -743,7 +756,7 @@ class TestFirstProfile:
         # needs something selected, and on a fresh install nothing is. Without
         # New there is no way to make the first profile from the console.
         url, core = empty_console
-        page.goto(f"{url}/?token={TOKEN}")
+        page.goto(f"{url}/?token={TOKEN}&profile=en-technical-backend")
         expect(page.locator("#start")).to_be_disabled()
         expect(page.locator("#new")).to_be_enabled()
 
@@ -754,13 +767,14 @@ class TestFirstProfile:
         page.locator("#editor-save").click()
 
         expect(page.locator("#editor-status")).to_have_text("saved")
-        expect(page.locator("#profile option")).to_have_count(1)
+        expect(page.locator("#profile option")).to_have_count(2)  # prompt + the new one
+        expect(page.locator("#profile")).not_to_have_value("")  # saving chooses it
         expect(page.locator("#start")).to_be_enabled()
         assert core.profiles.list_ids()
 
     def test_new_is_unavailable_while_live(self, page: Page, live_console) -> None:
         url, _ = live_console
-        page.goto(f"{url}/?token={TOKEN}")
+        page.goto(f"{url}/?token={TOKEN}&profile=en-technical-backend")
         expect(page.locator("#start")).to_be_enabled()
         page.locator("#start").click()
         expect(page.locator("#session-pill")).to_have_text("live")
@@ -872,7 +886,7 @@ class TestLostConnection:
 
         urls = _serve(core)
         url = next(urls)
-        page.goto(f"{url}/?token={TOKEN}")
+        page.goto(f"{url}/?token={TOKEN}&profile=en-technical-backend")
         expect(page.locator("#start")).to_be_enabled()
 
         # Stop the server. The console should notice rather than sit there
@@ -920,7 +934,7 @@ class TestModelStatusIndicator:
         self, page: Page, live_console
     ) -> None:
         url, _ = live_console
-        page.goto(f"{url}/?token={TOKEN}")
+        page.goto(f"{url}/?token={TOKEN}&profile=en-technical-backend")
         expect(page.locator("#start")).to_be_enabled()
         page.locator("#start").click()
         expect(page.locator("#session-pill")).to_have_text("live")

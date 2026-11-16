@@ -90,6 +90,7 @@ function connect() {
       setStatus(message.detail, "error");
     }
     render();
+    if (message.type === "profiles") savedProfileId = null;
   });
   socket.addEventListener("close", () => {
     // Keep trying, and say so. A console that gives up silently mid-call is
@@ -141,6 +142,7 @@ function render() {
 // Rebuilding a <select> under an open dropdown closes it, so this only
 // touches the DOM when the options have actually changed.
 let renderedProfiles = "";
+let savedProfileId = null;
 
 function renderProfiles() {
   // Everything the option renders goes into the signature, not just the id:
@@ -152,8 +154,19 @@ function renderProfiles() {
   if (signature === renderedProfiles) return;
   renderedProfiles = signature;
 
-  const previous = el.profile.value || PROFILE;
+  // Saving a profile is a deliberate act, so the one just saved is the one
+  // chosen; otherwise the user's own choice stays.
+  const previous = savedProfileId || el.profile.value || PROFILE;
+  // No profile is chosen for the user: the profile fixes the language and the
+  // hint mode, and a call that starts in the wrong one is transcribed in the
+  // wrong language. Start stays disabled until one is picked on purpose.
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Choose a profile…";
+  placeholder.disabled = true;
+  placeholder.selected = true;
   el.profile.replaceChildren(
+    placeholder,
     ...state.profiles.map((profile) => {
       const option = document.createElement("option");
       option.value = profile.id;
@@ -388,6 +401,7 @@ el.start.addEventListener("click", () => {
   });
   send({ type: "session.start" });
 });
+el.profile.addEventListener("change", render);
 el.stop.addEventListener("click", () => send({ type: "session.stop" }));
 
 el.history.addEventListener("click", () => {
@@ -438,6 +452,7 @@ el.editorClose.addEventListener("click", () => {
 el.editorSave.addEventListener("click", () => {
   if (!state.editing) return;
   setStatus("saving…", "");
+  savedProfileId = state.editing.id;
   send({
     type: "profile.save",
     profile_id: state.editing.id,
