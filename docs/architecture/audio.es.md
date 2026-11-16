@@ -168,8 +168,11 @@ tiempo, y el silencio es también de donde estos modelos inventan palabras. Con 
 audio pasó de 75 peticiones que ocupaban al servidor 43 s para 37 s de audio a 15 peticiones y 8 s.
 
 Con `backend = "off"` no hay detector y el reconocedor lo oye todo, como antes. Los tiempos de los
-segmentos siguen el reloj de tramas del propio carril, así que continúan contando durante el silencio
-que nunca se decodificó.
+segmentos siguen una única línea de tiempo de la sesión, compartida por los dos carriles: cada trama
+se sella al llegar, en segundos desde `session.start`, y nunca antes de una trama después de la
+anterior del mismo carril. Siguen contando durante el silencio que nunca se decodificó y durante los
+huecos (una reconexión, tramas perdidas), y un carril que se conecta tarde empieza donde va la
+llamada, no en cero.
 
 ### Leer no es reconocer
 

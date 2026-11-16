@@ -17,6 +17,7 @@ import hmac
 import logging
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -111,6 +112,8 @@ class Core:
     #: Recorded sessions. Disabled unless configured, because a tool that
     #: writes every conversation to disk unasked is not one to trust.
     history: HistoryStore | None = None
+    #: Monotonic seconds. Injectable so tests can move time without sleeping.
+    clock: Callable[[], float] = time.monotonic
 
     state: SessionState = field(default_factory=SessionState)
     decoder: LaneDecoder = field(default_factory=LaneDecoder, init=False)
@@ -140,7 +143,10 @@ class Core:
     #: Per lane: frames held back while nobody is speaking, and how many frames
     #: the lane has delivered. See ``route_audio``.
     _preroll: dict[str, deque[tuple[int, bytes]]] = field(default_factory=dict, init=False)
-    _frames_in: dict[str, int] = field(default_factory=dict, init=False)
+    #: The session timeline: when it began, and each lane's last stamp. See
+    #: ``stamp``.
+    _session_t0: float | None = field(default=None, init=False)
+    _lane_clock_us: dict[str, int] = field(default_factory=dict, init=False)
 
     # -- auth --------------------------------------------------------------- #
 
@@ -238,7 +244,7 @@ class Core:
         # websocket library stopped answering pings with it, and a recorded call
         # lost both lanes to a keepalive timeout while the model server was
         # merely behind.
-        pending: asyncio.Queue[bytes | None] = asyncio.Queue()
+        pending: asyncio.Queue[tuple[int, bytes] | None] = asyncio.Queue()
         worker = asyncio.create_task(self._recognize_lane(lane, pending))
         try:
             async for message in connection:
@@ -263,7 +269,9 @@ class Core:
                     # One corrupt packet is not worth dropping the lane for.
                     await connection.send(p.error(exc.code, str(exc)))
                     continue
-                pending.put_nowait(pcm)
+                # Stamped here, on arrival, not when the worker gets to it: a
+                # backlog must not shift the audio's place on the timeline.
+                pending.put_nowait((self.stamp(lane), pcm))
         except websockets.exceptions.ConnectionClosed:
             pass
         finally:
@@ -279,11 +287,12 @@ class Core:
             log.info("lane %s disconnected", lane)
 
     async def _recognize_lane(
-        self, lane: p.Lane, pending: asyncio.Queue[bytes | None]
+        self, lane: p.Lane, pending: asyncio.Queue[tuple[int, bytes] | None]
     ) -> None:
         """Work through one lane's queued audio, in order, until the sentinel."""
         warned = False
-        while (pcm := await pending.get()) is not None:
+        while (item := await pending.get()) is not None:
+            timestamp_us, pcm = item
             backlog = pending.qsize()
             if backlog > BACKLOG_WARN_FRAMES and not warned:
                 log.warning(
@@ -294,13 +303,33 @@ class Core:
             elif backlog < BACKLOG_WARN_FRAMES // 2:
                 warned = False
             try:
-                await self.route_audio(lane, pcm)
+                await self.route_audio(lane, pcm, timestamp_us)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 - one bad frame must not end the lane
                 log.exception("lane %s: audio routing failed", lane)
 
-    async def route_audio(self, lane: p.Lane, pcm: bytes) -> None:
+    def stamp(self, lane: p.Lane) -> int:
+        """Place a frame on the session timeline, in microseconds.
+
+        Arrival time since ``session.start``, never earlier than one frame
+        after the lane's previous stamp. So a gap (a reconnection, frames the
+        client dropped) advances the clock instead of becoming lag the
+        recognizer can never recover, both lanes count from the same origin,
+        and a burst of frames does not squeeze audio into less time than it
+        lasts.
+        """
+        if self._session_t0 is None:
+            self._session_t0 = self.clock()
+        arrived_us = int((self.clock() - self._session_t0) * 1_000_000)
+        previous = self._lane_clock_us.get(lane)
+        stamp = arrived_us if previous is None else max(previous + FRAME_US, arrived_us)
+        self._lane_clock_us[lane] = stamp
+        return stamp
+
+    async def route_audio(
+        self, lane: p.Lane, pcm: bytes, timestamp_us: int | None = None
+    ) -> None:
         """Decide what the recognizer hears, and when a turn is over.
 
         Voice activity detection runs first and gates recognition. Without it
@@ -317,12 +346,13 @@ class Core:
         detector hears it end rather than after the recognizer's own silence
         timer. With no detector configured the recognizer hears everything.
 
-        Timestamps are this lane's own frame clock, not the client's: segment
-        times must keep counting through the silence that was never decoded.
+        Timestamps are the session timeline (see ``stamp``), not the client's:
+        segment times must keep counting through the silence that was never
+        decoded, and through gaps. A caller that already stamped the frame
+        passes it in.
         """
-        index = self._frames_in.get(lane, 0)
-        self._frames_in[lane] = index + 1
-        timestamp_us = index * FRAME_US
+        if timestamp_us is None:
+            timestamp_us = self.stamp(lane)
 
         if self.bleed is not None:
             if lane == "far":
@@ -623,7 +653,8 @@ class Core:
         if self.bleed is not None:
             self.bleed.reset()
         self._preroll.clear()
-        self._frames_in.clear()
+        self._session_t0 = self.clock()
+        self._lane_clock_us.clear()
         # Once per session, not once per hint. This is the whole latency
         # argument in one line.
         #

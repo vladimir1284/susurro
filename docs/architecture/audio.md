@@ -165,8 +165,11 @@ and silence is also what these models invent words from. On that recording the s
 from 75 decode requests keeping the server busy 43 s for 37 s of audio to 15 requests and 8 s.
 
 With `backend = "off"` there is no detector and the recognizer hears everything, as before.
-Segment times follow the lane's own frame clock, so they keep counting through the silence
-that was never decoded.
+Segment times follow one session timeline shared by both lanes: each frame is stamped on
+arrival, in seconds since `session.start`, and never earlier than one frame after the lane's
+previous one. They keep counting through the silence that was never decoded and through gaps
+(a reconnection, dropped frames), and a lane that connects late starts where the call is, not
+at zero.
 
 ### Reading is separate from recognizing
 

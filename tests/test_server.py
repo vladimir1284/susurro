@@ -28,7 +28,9 @@ from core.llm.fake import CannedHintGenerator
 from core.server import Core, serve_core
 from core.session.history import HistoryStore, Line
 from core.session.profiles import ProfileStore
+from core.stt.base import Segment
 from core.stt.fake import ScriptedRecognizer, ScriptedUtterance
+from core.stt.whisper import WhisperRecognizer
 
 FIXTURES = Path(__file__).parent / "fixtures" / "profiles"
 TOKEN = "test-token"
@@ -1489,3 +1491,117 @@ class TestEntryPoints:
         root = Path(__file__).resolve().parent.parent
         config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
         assert config["project"]["scripts"][name] == target
+
+
+class TestLanesShareOneSessionTimeline:
+    """D4 of AUDIT.md: each lane counted frames from its own first frame, so a
+    gap became lag that never recovered and a late lane was offset against the
+    other. Frames are now stamped with arrival time on the session's clock."""
+
+    class Clock:
+        now = 1000.0
+
+        def __call__(self) -> float:
+            return self.now
+
+    class StampingRecognizer(ScriptedRecognizer):
+        """Final per frame, timed by the timestamp the server handed it."""
+
+        def feed(self, lane, timestamp_us, pcm):
+            return [
+                Segment(
+                    lane=lane,
+                    text=f"{lane}@{timestamp_us / 1e6:.1f}",
+                    t=timestamp_us / 1e6,
+                    final=True,
+                    dur=0.02,
+                )
+            ]
+
+    @staticmethod
+    def frame() -> bytes:
+        return bytes(FRAME_SAMPLES * 2)
+
+    def make(self, tmp_path: Path, recognizer=None) -> tuple[Core, Clock]:
+        clock = self.Clock()
+        core = Core(
+            profiles=ProfileStore(FIXTURES),
+            recognizer=recognizer or self.StampingRecognizer(script=[]),
+            generator=CannedHintGenerator(),
+            token=TOKEN,
+            clock=clock,
+        )
+        core.state.configure("en-technical-backend", "en", "conversational")
+        return core, clock
+
+    async def test_a_lane_that_connects_late_is_not_offset_against_the_other(
+        self, tmp_path: Path
+    ) -> None:
+        from core.session.history import Recording, render_markdown
+
+        core, clock = self.make(tmp_path)
+        await core.start_session()
+        core._recording = Recording(
+            session_id="s", profile_id="p", language="en", mode="conversational",
+            started_at="now",
+        )
+        for _ in range(3):
+            clock.now += 1.0
+            await core.route_audio("far", self.frame())
+        clock.now += 1.0
+        await core.route_audio("mic", self.frame())  # connects late
+        clock.now += 1.0
+        await core.route_audio("far", self.frame())
+
+        spoken = [line.text for line in core._recording.lines]
+        # Spoken order: far (3 s), far (4 s)... with mic between them at 4 s.
+        assert [line.t for line in core._recording.lines] == sorted(
+            line.t for line in core._recording.lines
+        )
+        exported = render_markdown(core._recording)
+        positions = [exported.index(text) for text in spoken]
+        assert positions == sorted(positions)
+        mic = next(line for line in core._recording.lines if line.lane == "mic")
+        assert mic.t >= 3.0, "a late lane must not restart at t=0"
+
+    async def test_a_gap_advances_the_lane_clock(self, tmp_path: Path) -> None:
+        seen: list[int] = []
+
+        class Spy(self.StampingRecognizer):
+            def feed(self, lane, timestamp_us, pcm):
+                seen.append(timestamp_us)
+                return []
+
+        core, clock = self.make(tmp_path, Spy(script=[]))
+        await core.start_session()
+        await core.route_audio("far", self.frame())
+        clock.now += 10.0  # frames that never arrived
+        await core.route_audio("far", self.frame())
+        assert seen[1] - seen[0] >= 10_000_000
+
+    async def test_audio_after_a_gap_still_gets_partials(
+        self, tmp_path: Path
+    ) -> None:
+        # The audit's reproduction: a 10 s gap, then real-time audio. lag_s
+        # stayed at 10 and the lane shed partials for the rest of the call.
+        from test_stt_whisper import FakeModel, FakeSegment
+
+        model = FakeModel([FakeSegment("so tell me", end=99.0)])
+        clock = self.Clock()
+        whisper = WhisperRecognizer(
+            language="en", clock=clock, partial_interval_s=1.0, max_window_s=60.0
+        )
+        whisper._model = model
+        core, _ = self.make(tmp_path, whisper)
+        core.clock = clock
+        await core.start_session()
+        for _ in range(50):
+            clock.now += 0.02
+            await core.route_audio("far", self.frame())
+        before = model.calls
+        clock.now += 10.0
+        for _ in range(1500):  # 30 s at exactly real-time pace
+            clock.now += 0.02
+            await core.route_audio("far", self.frame())
+        assert model.calls - before >= 25
+        assert whisper.lag_s("far", core._lane_clock_us["far"]) < 1.0
