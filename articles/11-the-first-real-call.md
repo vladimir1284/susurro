@@ -62,7 +62,7 @@ a bad hour, that became 6 and 10 seconds. It degrades; it does not collapse.
 
 I also tried the bigger Whisper model, expecting it to win. On this call it did not: better on one lane,
 worse on the other by a few words, missing two key terms, and three times slower. That
-says "not worth it here", not "never".
+says "not worth it here", not "never". A faster engine, Parakeet, lost too, for a less obvious reason: the next article.
 
 ## The question for you
 
