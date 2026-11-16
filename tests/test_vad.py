@@ -430,6 +430,8 @@ class RecordingRecognizer:
 
     def select_language(self, language) -> None: ...
 
+    def select_vocabulary(self, terms) -> None: ...
+
     def warmup(self) -> None: ...
 
     def reset(self) -> None: ...
@@ -497,6 +499,21 @@ class TestVoiceGatesRecognition:
         # And the clock kept counting through what was withheld.
         assert stamps == sorted(stamps)
         await capture.close()
+        await console.close()
+
+    async def test_the_profiles_vocabulary_reaches_the_recognizer(
+        self, url: str, core: Core
+    ) -> None:
+        heard: list[list[str]] = []
+
+        class Listening(RecordingRecognizer):
+            def select_vocabulary(self, terms) -> None:
+                heard.append(list(terms))
+
+        core.recognizer = Listening()
+        console = await open_console(url)  # starts the Spanish industrial profile
+        assert heard
+        assert {"Modbus", "PLC"} <= set(heard[0])
         await console.close()
 
     async def test_without_detectors_the_recognizer_hears_everything(self) -> None:

@@ -31,6 +31,7 @@ from core.llm.fake import CannedHintGenerator
 from core.main import build_detectors
 from core.protocol import FRAME_MS, SAMPLE_RATE
 from core.server import Core
+from core.session import vocabulary
 from core.session.profiles import ProfileStore
 from core.stt.base import Recognizer
 from core.stt.whispercpp import WhisperCppRecognizer
@@ -142,6 +143,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--language", default="es")
     parser.add_argument("--stt-url", default="http://127.0.0.1:8081")
     parser.add_argument("--prompt", default="", help="initial prompt sent with every request")
+    parser.add_argument("--profile", help="profile id whose vocabulary becomes the prompt, as a session would")
     parser.add_argument("--extra-latency", type=float, default=0.0,
                         help="seconds added to every request, to simulate a slower server")
     parser.add_argument("--max-lag", type=float, default=1.5,
@@ -165,6 +167,9 @@ def main(argv: list[str] | None = None) -> int:
             return result
 
         recognizer._transcribe = slowed  # type: ignore[method-assign]
+    if args.profile:
+        profile = ProfileStore(PROFILES).load(args.profile)
+        recognizer.select_vocabulary(vocabulary.extract(profile.context))
     recognizer.warmup()
 
     result = asyncio.run(replay(recognizer, args.session, args.start, args.end or total))

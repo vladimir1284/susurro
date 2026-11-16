@@ -44,10 +44,6 @@ class WhisperCppRecognizer(WhisperRecognizer):
     #: than the window it covers means the model is slower than real time, and
     #: that should surface as an error rather than as an ever-growing backlog.
     timeout_s: float = 30.0
-    #: Text whisper reads before decoding, sent with every request. It biases
-    #: the decoder toward vocabulary it would otherwise hear as something
-    #: common: "Modbus" as "MobBus", "TimescaleDB" as "Tyscale de B".
-    prompt: str = ""
 
     _client: httpx.Client | None = field(default=None, init=False)
 

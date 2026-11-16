@@ -30,6 +30,7 @@ from websockets.http11 import Response
 from core import protocol as p
 from core.audio import DecodeError, LaneDecoder
 from core.llm.base import HintContext, HintGenerator
+from core.session import vocabulary
 from core.session.history import (
     Hint,
     HistoryError,
@@ -532,6 +533,7 @@ class Core:
         try:
             async with self._recognizer_lock:
                 self.recognizer.select_language(profile.language)
+                self.recognizer.select_vocabulary(vocabulary.extract(profile.context))
                 await asyncio.to_thread(self.recognizer.warmup)
         finally:
             self._stt_status = "ready"

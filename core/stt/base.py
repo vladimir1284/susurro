@@ -68,6 +68,14 @@ class Recognizer(Protocol):
         """
         ...
 
+    def select_vocabulary(self, terms: list[str]) -> None:
+        """Tell the recognizer which words to expect, from the session's profile.
+
+        Called once per session, with ``select_language``. A recognizer that
+        cannot use them ignores them.
+        """
+        ...
+
     def warmup(self) -> None:
         """Load whatever is expensive, before audio starts arriving.
 

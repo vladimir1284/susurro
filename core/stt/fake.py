@@ -49,6 +49,9 @@ class ScriptedRecognizer:
     def select_language(self, language: Language) -> None:
         self.language = language
 
+    def select_vocabulary(self, terms: list[str]) -> None:
+        """A script does not care what words to expect."""
+
     def warmup(self) -> None:
         """Nothing to load. The point of this backend is that there is not."""
 

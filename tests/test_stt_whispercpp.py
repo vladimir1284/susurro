@@ -141,8 +141,8 @@ def test_a_prompt_is_sent_with_every_request_and_only_when_set() -> None:
     plain = recognizer(handler)
     feed_seconds(plain, 1.0)
     primed = recognizer(handler)
-    primed.prompt = "Modbus TCP, TimescaleDB"
+    primed.select_vocabulary(["Modbus", "TCP", "TimescaleDB"])
     feed_seconds(primed, 1.0)
 
     assert b'name="prompt"' not in bodies[0]
-    assert b'name="prompt"\r\n\r\nModbus TCP, TimescaleDB' in bodies[1]
+    assert b'name="prompt"\r\n\r\nModbus, TCP, TimescaleDB.' in bodies[1]

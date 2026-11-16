@@ -868,6 +868,8 @@ class TestRecognizerOffTheEventLoop:
 
             def select_language(self, language) -> None: ...
 
+            def select_vocabulary(self, terms) -> None: ...
+
             def warmup(self) -> None: ...
 
             def reset(self) -> None: ...
@@ -926,6 +928,8 @@ class TestRecognizerOffTheEventLoop:
 
             def select_language(self, language) -> None: ...
 
+            def select_vocabulary(self, terms) -> None: ...
+
             def warmup(self) -> None:
                 order.append("warmup")
 
@@ -952,6 +956,8 @@ class TestRecognizerOffTheEventLoop:
             language = "en"
 
             def select_language(self, language) -> None: ...
+
+            def select_vocabulary(self, terms) -> None: ...
 
             def warmup(self) -> None:
                 import time as _time

@@ -183,6 +183,33 @@ class TestFinals:
         assert instance.flush("far") == []
 
 
+class TestVocabulary:
+    def test_the_session_vocabulary_becomes_the_initial_prompt(self) -> None:
+        seen: list[dict] = []
+
+        class Recording(FakeModel):
+            def transcribe(self, audio, **kwargs):
+                seen.append(kwargs)
+                return super().transcribe(audio, **kwargs)
+
+        instance = recognizer(Recording([FakeSegment("x", end=0.2)]))
+        instance.select_vocabulary(["Modbus", "TimescaleDB"])
+        feed_seconds(instance, "far", 1.0)
+        assert seen[-1]["initial_prompt"] == "Modbus, TimescaleDB."
+
+    def test_without_a_vocabulary_no_prompt_is_passed(self) -> None:
+        seen: list[dict] = []
+
+        class Recording(FakeModel):
+            def transcribe(self, audio, **kwargs):
+                seen.append(kwargs)
+                return super().transcribe(audio, **kwargs)
+
+        instance = recognizer(Recording([FakeSegment("x", end=0.2)]))
+        feed_seconds(instance, "far", 1.0)
+        assert seen[-1]["initial_prompt"] is None
+
+
 class TestFallingBehindRealTime:
     """The interval counts audio; a slow decode does not stop audio arriving.
 

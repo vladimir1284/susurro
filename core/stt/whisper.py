@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from core.protocol import FRAME_MS, SAMPLE_RATE, Lane, Language
+from core.session.vocabulary import as_prompt
 from core.stt.base import Segment
 
 log = logging.getLogger("susurro.stt")
@@ -71,6 +72,9 @@ class WhisperRecognizer:
     #: the final is what the hint is written from, so under pressure it is the
     #: partials that go.
     partial_max_lag_s: float = 1.5
+    #: Words read before decoding, to bias it toward the vocabulary of the
+    #: session. Set from the profile at session start.
+    prompt: str = ""
     #: Wall clock, injectable so a test can hold time still.
     clock: Callable[[], float] = time.monotonic
 
@@ -115,6 +119,9 @@ class WhisperRecognizer:
         self.language = language
         if self.model_name != previous:
             self._model = None
+
+    def select_vocabulary(self, terms: list[str]) -> None:
+        self.prompt = as_prompt(terms)
 
     def warmup(self) -> None:
         """Load the weights now rather than on the first frame.
@@ -169,6 +176,7 @@ class WhisperRecognizer:
             language=self.language,
             vad_filter=True,
             condition_on_previous_text=False,
+            initial_prompt=self.prompt or None,
         )
         segments = list(segments)
         text = " ".join(segment.text.strip() for segment in segments).strip()
