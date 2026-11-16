@@ -19,6 +19,8 @@ window length are all configuration, and M0 is what picks them.
 from __future__ import annotations
 
 import logging
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -60,9 +62,26 @@ class WhisperRecognizer:
     max_window_s: float = 12.0
     #: Trailing silence that closes an utterance.
     silence_s: float = 0.6
+    #: Past this much lag behind real time, a lane stops asking for partials
+    #: until it has caught up; finals are never withheld. The interval above
+    #: counts audio, which keeps arriving while a slow decode runs, so on a
+    #: loaded or distant model server the partials pile up back to back and
+    #: recognition falls further behind with every second -- a recorded call
+    #: ended a hundred seconds late. A partial is a courtesy to the screen;
+    #: the final is what the hint is written from, so under pressure it is the
+    #: partials that go.
+    partial_max_lag_s: float = 1.5
+    #: Wall clock, injectable so a test can hold time still.
+    clock: Callable[[], float] = time.monotonic
 
     _model: object | None = field(default=None, init=False)
     _lanes: dict[str, _LaneBuffer] = field(default_factory=dict, init=False)
+    #: Per lane: wall time and caller clock at the first frame, so that audio
+    #: processed can be compared with time elapsed. And whether the lane is
+    #: currently shedding partials; it resumes only once well caught up, so it
+    #: does not flap on the threshold.
+    _origin: dict[str, tuple[float, int]] = field(default_factory=dict, init=False)
+    _shedding: dict[str, bool] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         self.reset()
@@ -107,9 +126,12 @@ class WhisperRecognizer:
 
     def reset(self) -> None:
         self._lanes = {"mic": _LaneBuffer(), "far": _LaneBuffer()}
+        self._origin = {}
+        self._shedding = {}
 
     def feed(self, lane: Lane, timestamp_us: int, pcm: bytes) -> list[Segment]:
         buffer = self._lanes[lane]
+        self._origin.setdefault(lane, (self.clock(), timestamp_us))
         if buffer.frames == 0:
             # The caller's clock, not a count of what was fed: the caller may
             # withhold silence, and segment times must keep counting through it.
@@ -121,7 +143,10 @@ class WhisperRecognizer:
         window_s = buffer.frames * FRAME_MS / 1000
         if window_s >= self.max_window_s:
             return self._finalize(lane, reason="window full")
-        if buffer.frames_since_partial * FRAME_MS / 1000 >= self.partial_interval_s:
+        if (
+            buffer.frames_since_partial * FRAME_MS / 1000 >= self.partial_interval_s
+            and not self._is_shedding(lane, timestamp_us)
+        ):
             buffer.frames_since_partial = 0
             return self._partial(lane)
         return []
@@ -150,6 +175,25 @@ class WhisperRecognizer:
         window_s = len(self._lanes[lane].pcm) / 2 / SAMPLE_RATE
         ended = bool(segments) and (window_s - segments[-1].end) >= self.silence_s
         return text, ended
+
+    def lag_s(self, lane: Lane, timestamp_us: int) -> float:
+        """How far behind real time this lane's recognition is, in seconds."""
+        wall0, ts0 = self._origin[lane]
+        return (self.clock() - wall0) - (timestamp_us - ts0) / 1_000_000
+
+    def _is_shedding(self, lane: Lane, timestamp_us: int) -> bool:
+        lag = self.lag_s(lane, timestamp_us)
+        shedding = self._shedding.get(lane, False)
+        if shedding and lag < self.partial_max_lag_s / 3:
+            shedding = False
+        elif not shedding and lag > self.partial_max_lag_s:
+            shedding = True
+            log.warning(
+                "lane %s is %.1fs behind real time: dropping partials until it catches up",
+                lane, lag,
+            )
+        self._shedding[lane] = shedding
+        return shedding
 
     def _partial(self, lane: Lane) -> list[Segment]:
         buffer = self._lanes[lane]

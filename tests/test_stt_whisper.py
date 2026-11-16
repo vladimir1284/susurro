@@ -43,6 +43,9 @@ class FakeModel:
 
 
 def recognizer(model: FakeModel, **kwargs) -> WhisperRecognizer:
+    # A still clock: decodes here are instant, and against the real one the gap
+    # between two partials in a tight loop is as small as the cost itself.
+    kwargs.setdefault("clock", lambda: 0.0)
     instance = WhisperRecognizer(language="en", **kwargs)
     instance._model = model
     return instance
@@ -178,6 +181,82 @@ class TestFinals:
         feed_seconds(instance, "far", 0.4)
         instance.reset()
         assert instance.flush("far") == []
+
+
+class TestFallingBehindRealTime:
+    """The interval counts audio; a slow decode does not stop audio arriving.
+
+    Without a limit the partials pile up behind a slow server, one decode after
+    another, and recognition ends up a minute or more behind: a recorded call
+    finished a hundred seconds late. Partials are a courtesy to the screen; the
+    final is what a hint is written from. So under pressure the partials go.
+    """
+
+    class Clock:
+        now = 1000.0
+
+        def __call__(self) -> float:
+            return self.now
+
+    class SlowModel(FakeModel):
+        def __init__(self, clock, cost_s: float, segments=None):
+            super().__init__(segments)
+            self.clock, self.cost_s = clock, cost_s
+
+        def transcribe(self, audio, **kwargs):
+            self.clock.now += self.cost_s  # the decode takes wall time
+            return super().transcribe(audio, **kwargs)
+
+    def make(self, cost_s: float):
+        clock = self.Clock()
+        model = self.SlowModel(clock, cost_s, [FakeSegment("so tell me", end=99.0)])
+        return recognizer(model, clock=clock, partial_interval_s=1.0), model, clock
+
+    @staticmethod
+    def feed(instance, clock, lane: str, seconds: float, *, realtime: bool) -> None:
+        """Audio arriving. Real time moves the wall clock with it; a burst, as
+        after a stall, delivers it all at once."""
+        stamps = vars(instance).setdefault("_test_clock", {})
+        for _ in range(int(seconds * 1000 / FRAME_MS)):
+            index = stamps.get(lane, 0)
+            stamps[lane] = index + 1
+            if realtime:
+                clock.now += FRAME_MS / 1000
+            instance.feed(lane, index * FRAME_MS * 1000, SILENCE)
+
+    def test_a_slow_decode_makes_the_lane_stop_asking_for_partials(self) -> None:
+        instance, model, clock = self.make(cost_s=2.0)
+        self.feed(instance, clock, "far", 1.0, realtime=True)
+        assert model.calls == 1  # that decode left the lane 2 s behind
+        self.feed(instance, clock, "far", 5.0, realtime=True)
+        assert model.calls == 1  # unlimited this would be six
+
+    def test_it_resumes_once_the_lane_has_caught_up(self) -> None:
+        instance, model, clock = self.make(cost_s=2.0)
+        self.feed(instance, clock, "far", 1.0, realtime=True)
+        self.feed(instance, clock, "far", 2.0, realtime=True)
+        assert model.calls == 1
+        # The stalled audio arrives in a burst: no wall time passes, the lag
+        # closes, and partials come back.
+        self.feed(instance, clock, "far", 3.0, realtime=False)
+        assert model.calls >= 2
+
+    def test_a_model_that_keeps_up_is_not_slowed(self) -> None:
+        instance, model, clock = self.make(cost_s=0.0)
+        self.feed(instance, clock, "far", 5.0, realtime=True)
+        assert model.calls == 5  # one per second of audio, as before
+
+    def test_a_final_is_never_withheld_while_partials_are_shed(self) -> None:
+        instance, model, clock = self.make(cost_s=2.0)
+        self.feed(instance, clock, "far", 3.0, realtime=True)
+        assert model.calls == 1
+        assert [s.final for s in instance.flush("far")] == [True]
+
+    def test_the_lag_is_measured_per_lane(self) -> None:
+        instance, model, clock = self.make(cost_s=2.0)
+        self.feed(instance, clock, "far", 1.0, realtime=True)  # far falls behind
+        self.feed(instance, clock, "mic", 1.0, realtime=True)  # mic starts now
+        assert model.calls == 2  # mic's first partial is not held for far's lag
 
 
 class TestTiming:
