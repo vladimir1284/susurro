@@ -14,6 +14,7 @@ this server, not of any model.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -902,6 +903,103 @@ class TestRecognizerOffTheEventLoop:
             assert (await drain(console, "profiles"))["type"] == "profiles"
             assert _time.perf_counter() - started < 0.15
 
+        await console.close()
+
+    async def test_a_stalled_recognizer_does_not_stop_the_socket_being_read(
+        self, url: str, core: Core
+    ) -> None:
+        # A lane that awaited the recognizer stopped reading whenever Whisper
+        # was slow, the websocket library stopped answering pings with it, and
+        # the client gave the lane up for dead after its keepalive timeout.
+        import threading
+
+        from capture.codec import OpusEncoder
+
+        release = threading.Event()
+
+        class Stalled:
+            language = "en"
+
+            def select_language(self, language) -> None: ...
+
+            def select_vocabulary(self, terms) -> None: ...
+
+            def warmup(self) -> None: ...
+
+            def reset(self) -> None: ...
+
+            def feed(self, lane, timestamp_us, pcm):
+                release.wait(timeout=10)
+                return []
+
+            def flush(self, lane):
+                return []
+
+        core.recognizer = Stalled()
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        try:
+            async with websockets.connect(f"{url}/capture?token={TOKEN}") as capture:
+                await capture.send(
+                    p.Hello(session_id="s", lane="far", client="test/0.1").to_json()
+                )
+                await capture.recv()
+                encoder = OpusEncoder()
+                for index in range(80):
+                    await capture.send(opus_frame(encoder, index))
+                # The recognizer has not returned from its first frame. A pong
+                # still comes back, because the socket is still being read.
+                pong = await capture.ping()
+                await asyncio.wait_for(pong, timeout=2.0)
+        finally:
+            release.set()
+        await console.close()
+
+    async def test_audio_already_received_is_transcribed_before_the_lane_closes(
+        self, url: str, core: Core
+    ) -> None:
+        import time as _time
+
+        from capture.codec import OpusEncoder
+
+        fed: list[int] = []
+
+        class Counting:
+            language = "en"
+
+            def select_language(self, language) -> None: ...
+
+            def select_vocabulary(self, terms) -> None: ...
+
+            def warmup(self) -> None: ...
+
+            def reset(self) -> None: ...
+
+            def feed(self, lane, timestamp_us, pcm):
+                _time.sleep(0.005)  # slow enough that frames wait in the queue
+                fed.append(timestamp_us)
+                return []
+
+            def flush(self, lane):
+                return []
+
+        core.recognizer = Counting()
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        async with websockets.connect(f"{url}/capture?token={TOKEN}") as capture:
+            await capture.send(
+                p.Hello(session_id="s", lane="far", client="test/0.1").to_json()
+            )
+            await capture.recv()
+            encoder = OpusEncoder()
+            for index in range(40):
+                await capture.send(opus_frame(encoder, index))
+        for _ in range(200):  # the lane is released once its queue is worked through
+            if core.state.lanes["far"] == "down":
+                break
+            await asyncio.sleep(0.02)
+        assert core.state.lanes["far"] == "down"
+        assert len(fed) == 40
         await console.close()
 
     async def test_the_session_takes_its_language_from_the_profile(

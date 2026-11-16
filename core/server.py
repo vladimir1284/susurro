@@ -86,6 +86,9 @@ FRAME_US = p.FRAME_MS * 1000
 #: is what keeps "so" from arriving as "o".
 PREROLL_FRAMES = 15
 
+#: Queued audio, in frames, past which a lane is said to be falling behind (5 s).
+BACKLOG_WARN_FRAMES = 250
+
 
 @dataclass
 class Core:
@@ -225,6 +228,14 @@ class Core:
         await self.broadcast(self.state_event())
         log.info("lane %s connected (%s)", lane, hello.client)
 
+        # Reading and recognizing are separate jobs. This loop only decodes and
+        # queues; a worker does the slow part. When the loop itself awaited the
+        # recognizer it stopped reading whenever Whisper was slow, the
+        # websocket library stopped answering pings with it, and a recorded call
+        # lost both lanes to a keepalive timeout while the model server was
+        # merely behind.
+        pending: asyncio.Queue[bytes | None] = asyncio.Queue()
+        worker = asyncio.create_task(self._recognize_lane(lane, pending))
         try:
             async for message in connection:
                 if isinstance(message, str):
@@ -248,16 +259,42 @@ class Core:
                     # One corrupt packet is not worth dropping the lane for.
                     await connection.send(p.error(exc.code, str(exc)))
                     continue
-                await self.route_audio(lane, pcm)
+                pending.put_nowait(pcm)
         except websockets.exceptions.ConnectionClosed:
             pass
         finally:
+            # What was already received is still transcribed before the lane is
+            # closed out; the worker finishes it, then ends on the sentinel.
+            pending.put_nowait(None)
+            await worker
             for segment in await self.flush_lane(lane):
                 await self.emit_segment(segment)
             self._preroll.pop(lane, None)
             self.state.lane_down(lane)
             await self.broadcast(self.state_event())
             log.info("lane %s disconnected", lane)
+
+    async def _recognize_lane(
+        self, lane: p.Lane, pending: asyncio.Queue[bytes | None]
+    ) -> None:
+        """Work through one lane's queued audio, in order, until the sentinel."""
+        warned = False
+        while (pcm := await pending.get()) is not None:
+            backlog = pending.qsize()
+            if backlog > BACKLOG_WARN_FRAMES and not warned:
+                log.warning(
+                    "lane %s has %.0fs of audio waiting for recognition",
+                    lane, backlog * p.FRAME_MS / 1000,
+                )
+                warned = True
+            elif backlog < BACKLOG_WARN_FRAMES // 2:
+                warned = False
+            try:
+                await self.route_audio(lane, pcm)
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - one bad frame must not end the lane
+                log.exception("lane %s: audio routing failed", lane)
 
     async def route_audio(self, lane: p.Lane, pcm: bytes) -> None:
         """Decide what the recognizer hears, and when a turn is over.
