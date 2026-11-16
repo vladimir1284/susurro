@@ -91,7 +91,41 @@ class TestPromptShape:
         )
         messages = generator.messages(context, PREAMBLE)
         assert [m["role"] for m in messages] == ["system", "user"]
-        assert messages[1]["content"] == "them: hello"
+        assert messages[1]["content"] == "them: hello"  # conversational: untouched
+
+    def test_the_last_thing_said_is_pointed_at_after_the_transcript(self) -> None:
+        # With nothing after the transcript a small model answers the profile's
+        # notes instead of the question. The instruction goes last, so the
+        # transcript before it stays an unchanged prefix for the cache.
+        generator = OpenAICompatGenerator()
+        for language, expected in (("en", "last thing 'them' said"), ("es", "lo último que dijo")):
+            context = HintContext(
+                mode="business", language=language, transcript=("them: a", "me: b")
+            )
+            body = generator.messages(context, PREAMBLE)[1]["content"]
+            assert body.startswith("them: a\nme: b\n\n")
+            assert body.rstrip().endswith("]")
+            assert expected in body
+
+    def test_other_modes_are_left_as_they_were(self) -> None:
+        # Not measured, so not changed: in the technical mode the line made the
+        # model answer in the first person instead of giving the approach.
+        generator = OpenAICompatGenerator()
+        for mode in ("conversational", "technical"):
+            context = HintContext(mode=mode, language="en", transcript=("them: a",))
+            assert generator.messages(context, PREAMBLE)[1]["content"] == "them: a"
+
+    def test_a_longer_transcript_extends_the_earlier_one_as_a_prefix(self) -> None:
+        generator = OpenAICompatGenerator()
+        short = generator.messages(
+            HintContext(mode="business", language="es", transcript=("them: a",)), PREAMBLE
+        )[1]["content"]
+        longer = generator.messages(
+            HintContext(mode="business", language="es", transcript=("them: a", "me: b")),
+            PREAMBLE,
+        )[1]["content"]
+        line_a = short.split("\n\n")[0]
+        assert longer.startswith(line_a + "\n")
 
     def test_the_system_message_does_not_change_between_hints(self) -> None:
         generator = OpenAICompatGenerator()

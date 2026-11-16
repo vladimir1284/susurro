@@ -59,9 +59,11 @@ SYSTEM_PROMPTS: dict[tuple[str, str], str] = {
         "cases in a final line starting with 'Edge:'."
     ),
     ("en", "business"): (
-        "You help someone during a live business meeting. At most four "
-        "fragments, each on its own line starting with '- '. Name concrete "
-        "next steps and risks, not pleasantries."
+        "You help someone during a live business meeting. 'them' is the other "
+        "party and 'me' is the person reading you. Answer FIRST what 'them' said "
+        "last: what to say now, in keywords. At most four lines starting with "
+        "'- ', each under 10 words. Do not repeat what 'me' already said. No "
+        "preamble, no pleasantries."
     ),
     ("es", "conversational"): (
         "Ayudas a alguien durante una conversación en vivo. Responde con cuatro "
@@ -75,10 +77,31 @@ SYSTEM_PROMPTS: dict[tuple[str, str], str] = {
         "casos límite en una línea final que empiece por 'Límites:'."
     ),
     ("es", "business"): (
-        "Ayudas a alguien durante una reunión de negocio en vivo. Cuatro "
-        "fragmentos como máximo, cada uno en su línea empezando por '- '. "
-        "Nombra próximos pasos y riesgos concretos, no cortesías."
+        "Ayudas a alguien durante una reunión de negocio en vivo. 'them' es la "
+        "otra parte y 'me' es quien te lee. Responde PRIMERO a lo último que "
+        "dijo 'them': qué decir ahora, en palabras clave. Como máximo cuatro "
+        "líneas que empiecen por '- ', de menos de 10 palabras cada una. No "
+        "repitas lo que 'me' ya dijo. Sin preámbulo ni cortesías."
     ),
+}
+
+#: Appended after the transcript, every time. The system prompt and the profile
+#: come first and are long; a small model given a transcript with nothing after
+#: it answers the profile -- its notes, its goal -- rather than the last thing
+#: said. On the six questions of a recorded call, the hint talked about the
+#: scheduled site visit in 11 of 15 answers where it had nothing to do with the
+#: question. With this line it did in 5; with this line and the revised business
+#: prompt, in 1, and no hint was cut off mid-sentence (it had been 18 of 18).
+#: It sits at the very end, so the transcript before it stays an unchanged prefix.
+#:
+#: Only the business mode has been measured. In the technical mode the same line
+#: made the model answer in the first person ("I would implement...") instead of
+#: giving the approach in one line, so it is not applied there until someone
+#: has measured what it does.
+LAST_THING_MODES = frozenset({"business"})
+LAST_THING: dict[str, str] = {
+    "en": "[Respond to the last thing 'them' said.]",
+    "es": "[Responde a lo último que dijo 'them'.]",
 }
 
 
@@ -138,7 +161,12 @@ class OpenAICompatGenerator:
         messages = [{"role": "system", "content": system}]
         if context is None:
             return messages
-        body = "\n".join(context.transcript) if context.transcript else "(no speech yet)"
+        if context.transcript:
+            body = "\n".join(context.transcript)
+            if mode in LAST_THING_MODES:
+                body += "\n\n" + LAST_THING.get(language, LAST_THING["en"])
+        else:
+            body = "(no speech yet)"
         messages.append({"role": "user", "content": body})
         return messages
 
