@@ -41,7 +41,8 @@ class BleedGate:
     #: lane's recent level. 0 disables the gate.
     ratio: float = 2.0
     #: RMS under which the far lane counts as silent and the gate stands down.
-    far_floor: float = 100.0
+    #: Far speech measured 400-950 on two recorded calls; its idle noise 50-125.
+    far_floor: float = 250.0
 
     _far: deque[float] = field(default_factory=lambda: deque(maxlen=FAR_HOLD_FRAMES), init=False)
     _mic: deque[float] = field(default_factory=lambda: deque(maxlen=MIC_HOLD_FRAMES), init=False)
