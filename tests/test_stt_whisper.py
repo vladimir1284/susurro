@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import pytest
 
 from core.protocol import FRAME_MS
-from core.stt.whisper import DEFAULT_MODELS, WhisperRecognizer
+from core.stt.whisper import DEFAULT_MODELS, WhisperRecognizer, plausible
 
 FRAME_BYTES = 640
 SILENCE = bytes(FRAME_BYTES)
@@ -334,3 +334,33 @@ def test_the_real_model_loads_and_accepts_audio() -> None:
     feed_seconds(instance, "far", 1.0)
     segments = instance.flush("far")
     assert isinstance(segments, list)
+
+
+class TestImplausibleTranscriptions:
+    """A model in a loop is confident and fluent and wrong."""
+
+    LOOP = (
+        "El primer objetivo es que el sistema de control de las redes sociales "
+        "y el sistema de control de las redes sociales."
+    )
+
+    def test_ordinary_speech_passes(self) -> None:
+        assert plausible("Tenemos una línea de envasado con controladores de dos fabricantes", 5.0)
+
+    def test_a_rate_nobody_can_speak_at_is_rejected(self) -> None:
+        text = "uno dos tres cuatro cinco seis siete ocho nueve diez once doce"
+        assert not plausible(text, 1.0)  # twelve words in a second
+
+    def test_a_few_words_in_a_short_clip_do_not_trip_the_rate(self) -> None:
+        assert plausible("no se cae el enlace", 0.4)
+
+    def test_a_long_run_repeated_in_one_utterance_is_a_loop(self) -> None:
+        assert not plausible(self.LOOP, 30.0)  # plausible rate, still a loop
+
+    def test_a_short_phrase_said_twice_is_not(self) -> None:
+        assert plausible("sí, sí, claro que sí, claro que sí", 4.0)
+
+    def test_the_recorded_loop_is_discarded_by_the_recognizer(self) -> None:
+        model = FakeModel([FakeSegment(self.LOOP, end=2.0)])
+        instance = recognizer(model, partial_interval_s=1.0)
+        assert feed_seconds(instance, "mic", 2.2) == []

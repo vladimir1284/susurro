@@ -19,6 +19,7 @@ window length are all configuration, and M0 is what picks them.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -34,6 +35,41 @@ log = logging.getLogger("susurro.stt")
 #: Recognizers are selected from the profile's language. English gets a
 #: dedicated fast path if one is configured; see docs/architecture/audio.md.
 DEFAULT_MODELS: dict[str, str] = {"en": "small.en", "es": "large-v3-turbo"}
+
+
+#: Speech does not exceed this many words per second in any language the project
+#: targets; a transcription that does is a model looping, not a person talking.
+MAX_WORDS_PER_S = 7.0
+#: A rate means little for a handful of words: a short clip with a long word in
+#: it can look fast for a moment.
+MIN_WORDS_FOR_RATE = 8
+#: A run of this many words that appears twice in one utterance is a loop.
+LOOP_WORDS = 6
+
+_WORD = re.compile(r"[\w']+", re.UNICODE)
+
+
+def plausible(text: str, seconds: float) -> bool:
+    """Whether a transcription could have been spoken in that much audio.
+
+    Whisper-family models fall into loops on some audio, and the result is
+    confident, fluent and wrong: on a recorded call, twenty-two words out of
+    two seconds, a sentence about "redes sociales" said twice, in a meeting about
+    industrial telemetry. Fed to the language model as something the user said,
+    it would steer every hint after it. Two language-independent checks catch
+    the loops: a speech rate nobody can reach, and a long run of words repeated
+    within the same utterance.
+    """
+    words = [w.lower() for w in _WORD.findall(text)]
+    if seconds > 0 and len(words) >= MIN_WORDS_FOR_RATE and len(words) / seconds > MAX_WORDS_PER_S:
+        return False
+    seen: set[tuple[str, ...]] = set()
+    for start in range(len(words) - LOOP_WORDS + 1):
+        run = tuple(words[start : start + LOOP_WORDS])
+        if run in seen:
+            return False
+        seen.add(run)
+    return True
 
 
 @dataclass
@@ -203,9 +239,21 @@ class WhisperRecognizer:
         self._shedding[lane] = shedding
         return shedding
 
+    def _decode(self, lane: Lane) -> tuple[str, bool]:
+        """Transcribe the lane's window, discarding what could not have been said."""
+        text, ended = self._transcribe(lane)
+        seconds = len(self._lanes[lane].pcm) / 2 / SAMPLE_RATE
+        if text and not plausible(text, seconds):
+            log.warning(
+                "lane %s: discarded an implausible transcription (%d words in %.1fs): %s",
+                lane, len(text.split()), seconds, text[:60],
+            )
+            return "", ended
+        return text, ended
+
     def _partial(self, lane: Lane) -> list[Segment]:
         buffer = self._lanes[lane]
-        text, ended = self._transcribe(lane)
+        text, ended = self._decode(lane)
         if ended and text:
             return self._close(lane, text)
         if not text or text == buffer.last_partial:
@@ -214,7 +262,7 @@ class WhisperRecognizer:
         return [Segment(lane=lane, text=text, t=buffer.started_at_s, final=False)]
 
     def _finalize(self, lane: Lane, *, reason: str) -> list[Segment]:
-        text, _ended = self._transcribe(lane)
+        text, _ended = self._decode(lane)
         log.debug("closing %s utterance on lane %s: %s", reason, lane, text[:60])
         if not text:
             self._reset_lane(lane)
