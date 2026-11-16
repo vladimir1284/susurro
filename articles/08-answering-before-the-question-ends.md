@@ -131,4 +131,13 @@ surface in front of users, and writing it down is most of what stops me from for
 
 ---
 
+**Update: it was broken, and exactly where I said I hadn't looked.** The first real speech never
+opened a single utterance. The model wants the last 64 samples of the previous window in front of
+each new one; without them it still runs and returns a probability, just a wrong one: on a Spanish
+question, 0 of 173 windows crossed the threshold, against 166 of 173 with the context. Silence, noise
+and tones score low either way, which is why every test I had passed. The gap I wrote down as
+"unverified" was the bug. Writing it down is why I knew where to look first.
+
+---
+
 *Susurro is open source under AGPL-3.0: github.com/vladimir1284/susurro*

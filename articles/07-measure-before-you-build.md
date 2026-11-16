@@ -127,4 +127,13 @@ bad — and written it down, where I can't quietly reinterpret it later.
 
 ---
 
+**Update.** The real numbers arrived, from one call and one Mac mini, and the useful ones were not the
+ones I had estimated. The server's speed varied threefold between identical requests (0.5 s idle, 1.6 s
+an hour later), with nobody touching it. A single benchmark run would have given me a number, and I
+would have believed it. The monitor that ran all night, one probe a minute, is what told me the truth:
+median 0.49 s, but a long tail. Measure once and you get an anecdote; measure for hours and you
+get a distribution.
+
+---
+
 *Susurro is open source under AGPL-3.0: github.com/vladimir1284/susurro*

@@ -123,4 +123,13 @@ a rebuild.
 
 ---
 
+**Update: now measured, on one machine.** Speech recognition has a fixed cost per request (the
+encoder pads everything to 30 seconds), so a 3-second window and a 12-second window took almost the
+same time on my small server: 0.28 s against 0.54 s. What matters is the *number* of requests, not their
+length. That is the seam above, confirmed, and it is also why re-reading a growing window every
+second turned out to be the expensive part. One machine, one afternoon: treat it as a measurement,
+not a benchmark.
+
+---
+
 *Susurro is open source under AGPL-3.0: github.com/vladimir1284/susurro*

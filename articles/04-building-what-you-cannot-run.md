@@ -119,4 +119,12 @@ you whether they work.
 
 ---
 
+**Update, after the first real run.** The audio capture module I called "written, reviewed, and
+plausible" met real hardware, and the plausible part did not survive: on a machine where the PipeWire
+daemon is installed but idle while PulseAudio owns the sound card, it listed two virtual devices and
+nothing else. I wrote a second backend, ran it against a real microphone, and the README still marks
+the original one as unrun. The label did its job: nobody, me included, had been told it worked.
+
+---
+
 *Susurro is open source under AGPL-3.0: github.com/vladimir1284/susurro*
