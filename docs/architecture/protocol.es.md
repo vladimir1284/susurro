@@ -184,7 +184,7 @@ suite.
 | `bad_transition` | Llegó un comando en una fase de sesión que no lo permite: una sugerencia sin sesión en vivo, `session.config` estando en vivo. |
 | `bad_request` | Un perfil falta, es inválido, o no concuerda con el `session.config` que lo nombró. |
 | `llm_unavailable` | El servidor del modelo no respondió al arrancar la sesión. La transcripción sigue funcionando; las sugerencias no, hasta que vuelva. |
-| `stt_failed` | Una pasada de reconocimiento lanzó una excepción. El carril sigue en pie: un tropiezo de transcripción no debe convertirse en un micrófono muerto el resto de la llamada. |
+| `stt_failed` | Una pasada de reconocimiento lanzó una excepción, o el motor de voz no arrancó en `session.start` (la sesión sigue en `configured`). Si fue una pasada, el carril sigue en pie: un tropiezo de transcripción no debe convertirse en un micrófono muerto el resto de la llamada. |
 | `history_failed` | La grabación está desactivada, o una sesión grabada falta o no se puede leer. |
 | `hint_failed` | La generación lanzó una excepción. El `hint.end` correspondiente lleva `reason: "error"`. |
 | `protocol_error` | Código base; no se emite directamente. |

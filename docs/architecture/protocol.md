@@ -179,7 +179,7 @@ the suite.
 | `bad_transition` | A command arrived in a session phase that does not allow it — a hint with no live session, `session.config` while live. |
 | `bad_request` | A profile is missing, invalid, or disagrees with the `session.config` that named it. |
 | `llm_unavailable` | The model server did not answer when the session started. Transcription still works; hints will not until it is back. |
-| `stt_failed` | A recognition pass raised. The lane stays up: a transcription hiccup must not become a dead microphone for the rest of a call. |
+| `stt_failed` | A recognition pass raised, or the speech backend would not warm up at `session.start` (the session then stays `configured`). A failed pass leaves the lane up: a transcription hiccup must not become a dead microphone for the rest of a call. |
 | `history_failed` | Recording is disabled, or a recorded session is missing or unreadable. |
 | `hint_failed` | Generation raised. The matching `hint.end` carries `reason: "error"`. |
 | `protocol_error` | Base code; not emitted directly. |

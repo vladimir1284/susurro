@@ -37,6 +37,8 @@ class ScriptedRecognizer:
     #: on bad audio or an out-of-memory moment, and a fake that never raises
     #: leaves that path untested.
     fail_on_feed: int | None = None
+    #: Raise from warmup, as a speech server that is not running does.
+    fail_on_warmup: bool = False
 
     _position: dict[str, int] = field(default_factory=dict, init=False)
     _frames_seen: dict[str, int] = field(default_factory=dict, init=False)
@@ -54,6 +56,8 @@ class ScriptedRecognizer:
 
     def warmup(self) -> None:
         """Nothing to load. The point of this backend is that there is not."""
+        if self.fail_on_warmup:
+            raise ConnectionError("connection refused")
 
     def reset(self) -> None:
         self._position = {"mic": 0, "far": 0}

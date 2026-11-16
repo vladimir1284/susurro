@@ -433,6 +433,81 @@ class TestHints:
         await console.close()
 
 
+class TestHintCancellationIsReliable:
+    """D2 and D3 of AUDIT.md: a cancel that silently did nothing."""
+
+    async def test_stopping_the_session_ends_the_hint_in_flight(
+        self, url: str, core: Core, tmp_path: Path
+    ) -> None:
+        core.history = HistoryStore(tmp_path, enabled=True)
+        core.generator.chunk_delay_s = 0.05
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await console.send(
+            json.dumps({"type": "hint.request", "mode": "conversational"})
+        )
+        await drain(console, "hint.delta")
+        await console.send(json.dumps({"type": "session.stop"}))
+
+        # Collect everything that arrives from the stop onwards, including
+        # whatever precedes the state change.
+        await asyncio.sleep(0.4)
+        events = []
+        while True:
+            try:
+                events.append(json.loads(await asyncio.wait_for(console.recv(), 0.1)))
+            except TimeoutError:
+                break
+        types = [e["type"] for e in events]
+        ends = [i for i, t in enumerate(types) if t == "hint.end"]
+        assert len(ends) == 1
+        assert ends and events[ends[0]]["reason"] == "cancelled"
+        assert "hint.delta" not in types[ends[0] + 1 :]
+        assert core._hint_task is None
+        # The model is not left busy and the partial text is recorded.
+        recorded = core.history.load(core.history.list_sessions()[0]["session_id"])
+        assert recorded.hints[0].reason == "cancelled"
+        assert recorded.hints[0].text
+        await console.close()
+
+    async def test_stop_sends_exactly_one_cancelled_end(
+        self, url: str, core: Core
+    ) -> None:
+        core.generator.chunk_delay_s = 0.05
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await console.send(
+            json.dumps({"type": "hint.request", "mode": "conversational"})
+        )
+        await drain(console, "hint.delta")
+        await console.send(json.dumps({"type": "session.stop"}))
+        end = await drain(console, "hint.end")
+        assert end["reason"] == "cancelled"
+        await await_phase(console, "configured")
+        await asyncio.sleep(0.3)
+        assert core._hint_task is None
+        await console.close()
+
+    async def test_a_stale_cancel_does_not_make_the_live_hint_uncancellable(
+        self, url: str, core: Core
+    ) -> None:
+        core.generator.chunk_delay_s = 0.05
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await console.send(
+            json.dumps({"type": "hint.request", "mode": "conversational"})
+        )
+        start = await drain(console, "hint.start")
+        await console.send(json.dumps({"type": "hint.cancel", "hint_id": "h-999"}))
+        await console.send(
+            json.dumps({"type": "hint.cancel", "hint_id": start["hint_id"]})
+        )
+        end = await drain(console, "hint.end")
+        assert end["reason"] == "cancelled"
+        assert end["hint_id"] == start["hint_id"]
+        await console.close()
+
+
 class TestProfileListing:
     async def test_a_console_is_greeted_with_the_profiles(self, url: str) -> None:
         async with websockets.connect(f"{url}/console?token={TOKEN}") as ws:
@@ -1196,6 +1271,37 @@ class TestWhenTheBackendsMisbehave:
             assert (await drain(console, "profiles"))["type"] == "profiles"
             assert core.state.lanes["far"] == "up"
 
+        await console.close()
+
+    async def test_a_speech_backend_that_cannot_warm_up_is_reported(
+        self, url: str, core: Core
+    ) -> None:
+        # The "whisper.cpp server is not running" case: the likeliest first-run
+        # mistake. It must be an error event, not a dropped connection.
+        core.recognizer = ScriptedRecognizer(script=list(SCRIPT), fail_on_warmup=True)
+        console = await open_console(url)
+        await console.send(
+            json.dumps(
+                {
+                    "type": "session.config",
+                    "profile_id": "en-technical-backend",
+                    "language": "en",
+                    "mode": "conversational",
+                }
+            )
+        )
+        await drain(console, "state")
+        await console.send(json.dumps({"type": "session.start"}))
+        error = await drain(console, "error")
+        assert error["code"] == "stt_failed"
+        assert "connection refused" in error["detail"]
+        # Connection still open, session still configured, retry possible.
+        await console.send(json.dumps({"type": "profiles.request"}))
+        await drain(console, "profiles")
+        assert core.state.phase.value == "configured"
+        core.recognizer.fail_on_warmup = False
+        await console.send(json.dumps({"type": "session.start"}))
+        await await_phase(console, "live")
         await console.close()
 
     async def test_a_hint_after_a_failed_one_still_works(

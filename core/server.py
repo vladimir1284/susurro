@@ -474,8 +474,11 @@ class Core:
                 case p.SessionStart():
                     await self.start_session()
                 case p.SessionStop():
-                    self.state.stop()
+                    # Cancel first: state.stop() clears active_hint, and a
+                    # cancel that finds no active hint would orphan the task
+                    # (it kept streaming and holding the model after stop).
                     await self.cancel_hint()
+                    self.state.stop()
                     self.finish_recording()
                     self.transcript.clear()
                 case p.HintRequest(mode=mode):
@@ -582,8 +585,22 @@ class Core:
                 self.recognizer.select_language(profile.language)
                 self.recognizer.select_vocabulary(vocabulary.extract(profile.context))
                 await asyncio.to_thread(self.recognizer.warmup)
-        finally:
+        except Exception as exc:  # noqa: BLE001 - surfaced to the console
+            # With whispercpp this is "the server is not running", the likeliest
+            # first-run mistake. Report it and stay configured so the user can
+            # fix it and press start again; an exception escaping dispatch
+            # would drop the console connection instead.
             self._stt_status = "ready"
+            log.warning("the speech backend did not warm up: %s", exc)
+            await self.broadcast(
+                p.error(
+                    "stt_failed",
+                    f"the speech backend did not start: {exc}. The session was "
+                    f"not started; fix the backend and start again.",
+                )
+            )
+            return
+        self._stt_status = "ready"
 
         self.state.start()
         self.transcript.clear()
@@ -748,11 +765,21 @@ class Core:
             )
 
     async def cancel_hint(self, hint_id: str | None = None) -> None:
-        task, self._hint_task = self._hint_task, None
+        # Look before taking the task: a cancel for a hint that is no longer the
+        # live one must leave the live one cancellable.
+        task = self._hint_task
         active = self.state.active_hint
-        if task is None or active is None:
-            return
         if hint_id is not None and hint_id != active:
+            return
+        self._hint_task = None
+        if task is None:
+            return
+        if active is None:
+            # Finished on its own (or already superseded): nothing to announce.
+            # An unfinished one is an orphan; stop it quietly.
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
             return
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
