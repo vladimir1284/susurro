@@ -129,3 +129,20 @@ def test_the_language_sent_to_the_server_follows_the_session() -> None:
     instance.select_language("en")
     feed_seconds(instance, 1.0)
     assert seen == [True]
+
+
+def test_a_prompt_is_sent_with_every_request_and_only_when_set() -> None:
+    bodies: list[bytes] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        bodies.append(request.read())
+        return httpx.Response(200, json={"segments": []})
+
+    plain = recognizer(handler)
+    feed_seconds(plain, 1.0)
+    primed = recognizer(handler)
+    primed.prompt = "Modbus TCP, TimescaleDB"
+    feed_seconds(primed, 1.0)
+
+    assert b'name="prompt"' not in bodies[0]
+    assert b'name="prompt"\r\n\r\nModbus TCP, TimescaleDB' in bodies[1]

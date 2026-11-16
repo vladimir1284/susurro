@@ -44,6 +44,10 @@ class WhisperCppRecognizer(WhisperRecognizer):
     #: than the window it covers means the model is slower than real time, and
     #: that should surface as an error rather than as an ever-growing backlog.
     timeout_s: float = 30.0
+    #: Text whisper reads before decoding, sent with every request. It biases
+    #: the decoder toward vocabulary it would otherwise hear as something
+    #: common: "Modbus" as "MobBus", "TimescaleDB" as "Tyscale de B".
+    prompt: str = ""
 
     _client: httpx.Client | None = field(default=None, init=False)
 
@@ -75,14 +79,17 @@ class WhisperCppRecognizer(WhisperRecognizer):
         return out.getvalue()
 
     def _transcribe(self, lane: Lane) -> tuple[str, bool]:
+        data = {
+            "response_format": "verbose_json",
+            "language": self.language,
+            "temperature": "0.0",
+        }
+        if self.prompt:
+            data["prompt"] = self.prompt
         response = self.client().post(
             "/inference",
             files={"file": ("window.wav", self._wav(lane), "audio/wav")},
-            data={
-                "response_format": "verbose_json",
-                "language": self.language,
-                "temperature": "0.0",
-            },
+            data=data,
         )
         response.raise_for_status()
         segments = [

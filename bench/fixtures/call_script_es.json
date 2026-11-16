@@ -1,0 +1,27 @@
+{
+  "note": "Script read on a Google Meet call, in Spanish. far = the interviewer, mic = the candidate. Sentences are scored independently, so extra speech between them is free.",
+  "far": [
+    "Tenemos una línea de envasado con controladores de dos fabricantes y ninguna telemetría centralizada",
+    "Qué se podría instrumentar sin parar la línea",
+    "Mi preocupación es que otro integrador nos dejó la línea parada dos días",
+    "Cómo evitamos eso",
+    "Qué datos podríamos ver en remoto",
+    "Temperatura, caudal, algo más",
+    "Cuánto tardaría una primera fase",
+    "Y más o menos cuánto costaría",
+    "A mí lo inalámbrico no me gusta, se cae",
+    "Qué pasa si se cae el enlace con la nube"
+  ],
+  "mic": [
+    "Se puede empezar leyendo los PLC por Modbus TCP sobre cable, en solo lectura, sin tocar la lógica de control",
+    "Así la línea nunca se detiene",
+    "Con fases reversibles",
+    "La primera solo observa; si algo falla, se desconecta el equipo y la línea sigue como estaba",
+    "Temperatura, caudal, peso con celdas de carga y estado de cada máquina",
+    "Se guarda en TimescaleDB sobre PostgreSQL y se consulta desde cualquier navegador",
+    "Sin ver la planta no prometo plazos",
+    "Propongo una visita técnica para medir, y entonces damos fechas y un presupuesto cerrado",
+    "Estoy de acuerdo, por eso la propuesta es cableada: Modbus TCP por Ethernet, sin Wi-Fi en la línea"
+  ],
+  "terms": ["Modbus TCP", "PLC", "TimescaleDB", "PostgreSQL", "caudal", "telemetría", "fabricantes", "inalámbrico", "Ethernet"]
+}
