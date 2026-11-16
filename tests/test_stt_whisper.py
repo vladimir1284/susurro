@@ -49,9 +49,13 @@ def recognizer(model: FakeModel, **kwargs) -> WhisperRecognizer:
 
 
 def feed_seconds(instance: WhisperRecognizer, lane: str, seconds: float) -> list:
+    """Feed like the server does: each frame stamped by the lane's frame clock."""
+    clock = vars(instance).setdefault("_test_clock", {})
     out = []
     for _ in range(int(seconds * 1000 / FRAME_MS)):
-        out.extend(instance.feed(lane, 0, SILENCE))
+        index = clock.get(lane, 0)
+        clock[lane] = index + 1
+        out.extend(instance.feed(lane, index * FRAME_MS * 1000, SILENCE))
     return out
 
 
@@ -183,6 +187,20 @@ class TestTiming:
         feed_seconds(instance, "far", 1.0)  # first utterance, 0.0 to 1.0
         second = feed_seconds(instance, "far", 1.0)
         assert second[0].t == pytest.approx(1.0, abs=0.05)
+
+    def test_time_the_caller_withheld_still_counts(self) -> None:
+        # The server does not feed silence. An utterance that starts after ten
+        # seconds of it must be stamped ten seconds in, not zero.
+        model = FakeModel([FakeSegment("hola", end=0.2)])
+        instance = recognizer(model, partial_interval_s=1.0, silence_s=0.6)
+        first = feed_seconds(instance, "far", 1.0)
+        assert first[0].t == pytest.approx(0.0, abs=0.05)
+        for index in range(500, 550):  # 10 s later, by the caller's clock
+            segments = instance.feed("far", index * FRAME_MS * 1000, SILENCE)
+            if segments:
+                assert segments[0].t == pytest.approx(10.0, abs=0.05)
+                return
+        raise AssertionError("no segment emitted")
 
     def test_duration_matches_the_window(self) -> None:
         model = FakeModel([FakeSegment("x", end=0.2)])

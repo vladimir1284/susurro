@@ -63,7 +63,6 @@ class WhisperRecognizer:
 
     _model: object | None = field(default=None, init=False)
     _lanes: dict[str, _LaneBuffer] = field(default_factory=dict, init=False)
-    _elapsed: dict[str, float] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         self.reset()
@@ -108,17 +107,16 @@ class WhisperRecognizer:
 
     def reset(self) -> None:
         self._lanes = {"mic": _LaneBuffer(), "far": _LaneBuffer()}
-        self._elapsed = {"mic": 0.0, "far": 0.0}
 
     def feed(self, lane: Lane, timestamp_us: int, pcm: bytes) -> list[Segment]:
-        del timestamp_us
         buffer = self._lanes[lane]
         if buffer.frames == 0:
-            buffer.started_at_s = self._elapsed[lane]
+            # The caller's clock, not a count of what was fed: the caller may
+            # withhold silence, and segment times must keep counting through it.
+            buffer.started_at_s = timestamp_us / 1_000_000
         buffer.pcm.extend(pcm)
         buffer.frames += 1
         buffer.frames_since_partial += 1
-        self._elapsed[lane] += FRAME_MS / 1000
 
         window_s = buffer.frames * FRAME_MS / 1000
         if window_s >= self.max_window_s:

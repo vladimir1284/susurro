@@ -16,6 +16,7 @@ import contextlib
 import hmac
 import logging
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -75,6 +76,15 @@ HINT_DEADLINE_S = 20.0
 #: either stuck or so loaded that the answer would be useless anyway.
 HINT_FIRST_TOKEN_DEADLINE_S = 8.0
 
+#: Microseconds in one audio frame; the unit of a lane's frame clock.
+FRAME_US = p.FRAME_MS * 1000
+
+#: Frames kept from before speech is declared, released when it starts. The
+#: detector needs a couple of windows (~64 ms) to be sure and the first sound of
+#: a sentence is already behind it by then; 15 frames is 300 ms of lead-in, which
+#: is what keeps "so" from arriving as "o".
+PREROLL_FRAMES = 15
+
 
 @dataclass
 class Core:
@@ -119,6 +129,10 @@ class Core:
     #: was started against a model server that was not running.
     _llm_status: str = field(default="unknown", init=False)
     _hint_text: dict[str, str] = field(default_factory=dict, init=False)
+    #: Per lane: frames held back while nobody is speaking, and how many frames
+    #: the lane has delivered. See ``route_audio``.
+    _preroll: dict[str, deque[tuple[int, bytes]]] = field(default_factory=dict, init=False)
+    _frames_in: dict[str, int] = field(default_factory=dict, init=False)
 
     # -- auth --------------------------------------------------------------- #
 
@@ -233,17 +247,67 @@ class Core:
                     # One corrupt packet is not worth dropping the lane for.
                     await connection.send(p.error(exc.code, str(exc)))
                     continue
-                for segment in await self.recognize(lane, frame.timestamp_us, pcm):
-                    await self.emit_segment(segment)
-                await self.observe_voice(lane, pcm)
+                await self.route_audio(lane, pcm)
         except websockets.exceptions.ConnectionClosed:
             pass
         finally:
             for segment in await self.flush_lane(lane):
                 await self.emit_segment(segment)
+            self._preroll.pop(lane, None)
             self.state.lane_down(lane)
             await self.broadcast(self.state_event())
             log.info("lane %s disconnected", lane)
+
+    async def route_audio(self, lane: p.Lane, pcm: bytes) -> None:
+        """Decide what the recognizer hears, and when a turn is over.
+
+        Voice activity detection runs first and gates recognition. Without it
+        the recognizer decodes every lane continuously, silence included, and
+        a speech model that takes most of a second per pass cannot keep up with
+        two lanes of nothing: the model server queues requests, they time out,
+        and the transcript falls further behind with every second of the call.
+        Silence is also what Whisper-family models invent words from.
+
+        So frames are held while nobody is speaking, the last
+        ``PREROLL_FRAMES`` of them are released when speech starts (the
+        detector needs a few windows to be sure, and the first phoneme is
+        already gone by then), and the utterance is closed the moment the
+        detector hears it end rather than after the recognizer's own silence
+        timer. With no detector configured the recognizer hears everything.
+
+        Timestamps are this lane's own frame clock, not the client's: segment
+        times must keep counting through the silence that was never decoded.
+        """
+        index = self._frames_in.get(lane, 0)
+        self._frames_in[lane] = index + 1
+        timestamp_us = index * FRAME_US
+
+        detector = (self.detectors or {}).get(lane)
+        if detector is None:
+            await self.hear(lane, timestamp_us, pcm)
+            return
+
+        events = detector.push(pcm)
+        preroll = self._preroll.setdefault(lane, deque(maxlen=PREROLL_FRAMES))
+        if VadEvent.SPEECH_START in events:
+            for held_us, held in preroll:
+                await self.hear(lane, held_us, held)
+            preroll.clear()
+        if detector.speaking:
+            await self.hear(lane, timestamp_us, pcm)
+        else:
+            preroll.append((timestamp_us, pcm))
+        if VadEvent.SPEECH_END in events:
+            # Closed here for every lane, and before anything reacts to the
+            # turn ending: a speculative hint must be written against a
+            # transcript that already holds the sentence it answers.
+            for segment in await self.flush_lane(lane):
+                await self.emit_segment(segment)
+        await self.react_to_voice(lane, events)
+
+    async def hear(self, lane: p.Lane, timestamp_us: int, pcm: bytes) -> None:
+        for segment in await self.recognize(lane, timestamp_us, pcm):
+            await self.emit_segment(segment)
 
     async def recognize(
         self, lane: p.Lane, timestamp_us: int, pcm: bytes
@@ -490,6 +554,8 @@ class Core:
         self.decoder.reset()
         for detector in (self.detectors or {}).values():
             detector.reset()
+        self._preroll.clear()
+        self._frames_in.clear()
         # Once per session, not once per hint. This is the whole latency
         # argument in one line.
         #
@@ -514,17 +580,14 @@ class Core:
 
     # -- voice activity -------------------------------------------------------- #
 
-    async def observe_voice(self, lane: p.Lane, pcm: bytes) -> None:
+    async def react_to_voice(self, lane: p.Lane, events: list[VadEvent]) -> None:
         """Turn per-lane speech boundaries into hint lifecycle decisions.
 
         Only the ``far`` lane matters here. The user talking is not a reason to
         write them a hint, and it is not a reason to throw one away either --
         people think out loud while reading.
         """
-        detector = (self.detectors or {}).get(lane)
-        if detector is None:
-            return
-        for event in detector.push(pcm):
+        for event in events:
             if lane != "far":
                 continue
             if event is VadEvent.SPEECH_START:

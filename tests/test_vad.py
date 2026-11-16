@@ -8,6 +8,7 @@ only in the direction that can honestly be checked here.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -414,5 +415,99 @@ class TestSpeculativeHints:
             token=TOKEN,
             detectors=None,
         )
-        await plain.observe_voice("far", tone(600))
+        await plain.route_audio("far", tone(600))
         assert plain.state.active_hint is None
+
+
+class RecordingRecognizer:
+    """Remembers exactly what it was given, and nothing else."""
+
+    language = "en"
+
+    def __init__(self) -> None:
+        self.fed: list[tuple[str, int]] = []
+        self.flushed: list[str] = []
+
+    def select_language(self, language) -> None: ...
+
+    def warmup(self) -> None: ...
+
+    def reset(self) -> None: ...
+
+    def feed(self, lane, timestamp_us, pcm):
+        self.fed.append((lane, timestamp_us))
+        return []
+
+    def flush(self, lane):
+        self.flushed.append(lane)
+        return []
+
+
+async def until(condition, seconds: float = 3.0) -> None:
+    for _ in range(int(seconds / 0.02)):
+        if condition():
+            return
+        await asyncio.sleep(0.02)
+    raise AssertionError("condition never became true")
+
+
+class TestVoiceGatesRecognition:
+    """Speech models decode what they are fed, silence included.
+
+    A recognizer that hears two lanes of nothing falls behind real time, and
+    the model server queues until requests time out. Silence is also what
+    these models invent words from. So the detector decides what is heard.
+    """
+
+    async def lane(self, url: str, core: Core, name: str):
+        recognizer = RecordingRecognizer()
+        core.recognizer = recognizer
+        console = await open_console(url)
+        capture = await websockets.connect(f"{url}/capture?token={TOKEN}")
+        await capture.send(
+            p.Hello(session_id="s", lane=name, client="test/0.1").to_json()
+        )
+        await capture.recv()
+        return recognizer, console, capture
+
+    async def test_silence_is_never_decoded(self, url: str, core: Core) -> None:
+        recognizer, console, capture = await self.lane(url, core, "far")
+        await send_audio(capture, quiet(3000), OpusEncoder())
+        await asyncio.sleep(0.3)  # let the server work through what it was sent
+        assert recognizer.fed == []
+        await capture.close()
+        await console.close()
+
+    async def test_speech_is_decoded_with_its_lead_in_and_then_closed(
+        self, url: str, core: Core
+    ) -> None:
+        recognizer, console, capture = await self.lane(url, core, "mic")
+        encoder = OpusEncoder()
+        sent = await send_audio(capture, quiet(1000), encoder)  # frames 0-49
+        sent = await send_audio(capture, tone(600), encoder, sent)  # 50-79
+        await send_audio(capture, quiet(1200), encoder, sent)
+
+        await until(lambda: recognizer.flushed)  # the turn was closed on its end
+        stamps = [ts for _lane, ts in recognizer.fed]
+        total = 50 + 30 + 60
+        assert 30 <= len(stamps) < total - 20  # the long silences were skipped
+        # The lead-in is there: decoding starts a little before the tone does,
+        # not at the first frame of the call and not after the tone began.
+        assert 30 * 20_000 <= stamps[0] <= 50 * 20_000
+        # And the clock kept counting through what was withheld.
+        assert stamps == sorted(stamps)
+        await capture.close()
+        await console.close()
+
+    async def test_without_detectors_the_recognizer_hears_everything(self) -> None:
+        recognizer = RecordingRecognizer()
+        plain = Core(
+            profiles=ProfileStore(FIXTURES),
+            recognizer=recognizer,
+            generator=CannedHintGenerator(),
+            token=TOKEN,
+            detectors=None,
+        )
+        for _ in range(10):
+            await plain.route_audio("far", quiet(20))
+        assert [ts for _lane, ts in recognizer.fed] == [i * 20_000 for i in range(10)]
