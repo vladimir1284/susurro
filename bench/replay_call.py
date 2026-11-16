@@ -62,7 +62,8 @@ def load_lane(directory: Path, lane: str, start_s: float, end_s: float) -> bytes
 
 
 async def replay(
-    recognizer: Recognizer, directory: Path, start_s: float, end_s: float
+    recognizer: Recognizer, directory: Path, start_s: float, end_s: float,
+    end_windows: int = 16,
 ) -> Replay:
     core = Core(
         profiles=ProfileStore(PROFILES),
@@ -70,7 +71,7 @@ async def replay(
         generator=CannedHintGenerator(),
         token="replay",
         detectors=build_detectors(
-            {"backend": "silero", "threshold": 0.5, "start_windows": 2, "end_windows": 16}
+            {"backend": "silero", "threshold": 0.5, "start_windows": 2, "end_windows": end_windows}
         ),
     )
     audio = {lane: load_lane(directory, lane, start_s, end_s) for lane in ("mic", "far")}
@@ -150,6 +151,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="seconds behind real time before partials are shed; 1e9 turns it off")
     parser.add_argument("--partial-interval", type=float, default=1.0,
                         help="seconds of new audio between partial transcriptions")
+    parser.add_argument("--end-windows", type=int, default=16,
+                        help="32 ms windows of silence that end a turn (16 is about 0.5 s)")
     parser.add_argument("--script", type=Path, help="JSON script to score against")
     parser.add_argument("--out", type=Path, help="write the finals and summary here (new file)")
     args = parser.parse_args(argv)
@@ -174,7 +177,9 @@ def main(argv: list[str] | None = None) -> int:
         recognizer.select_vocabulary(vocabulary.extract(profile.context))
     recognizer.warmup()
 
-    result = asyncio.run(replay(recognizer, args.session, args.start, args.end or total))
+    result = asyncio.run(
+        replay(recognizer, args.session, args.start, args.end or total, args.end_windows)
+    )
     script = json.loads(args.script.read_text(encoding="utf-8")) if args.script else None
     summary = report(result, script)
     print(json.dumps(summary, ensure_ascii=False, indent=2))

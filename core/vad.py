@@ -75,8 +75,10 @@ class _Hysteresis:
 
     #: Consecutive speech windows before an utterance opens. 2 ≈ 64 ms.
     start_windows: int = 2
-    #: Consecutive quiet windows before it closes. 16 ≈ 512 ms.
-    end_windows: int = 16
+    #: Consecutive quiet windows before it closes. 24 ≈ 768 ms. 16 (512 ms) split
+    #: a question at its comma on a recorded call; 31 and 47 merged nothing more
+    #: of what mattered and delayed every hint by up to a second.
+    end_windows: int = 24
 
     speaking: bool = field(default=False, init=False)
     _run: int = field(default=0, init=False)
