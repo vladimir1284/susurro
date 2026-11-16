@@ -58,6 +58,16 @@ class Recognizer(Protocol):
         """Close any open segment on a lane, e.g. when its client disconnects."""
         ...
 
+    def select_language(self, language: Language) -> None:
+        """Take the session's language from its profile.
+
+        Called once per session, before ``warmup``, so that what gets loaded
+        is what will be spoken. The configured language is only a default: a
+        recognizer left on the wrong one transcribes Spanish as English
+        without complaint, which is worse than failing.
+        """
+        ...
+
     def warmup(self) -> None:
         """Load whatever is expensive, before audio starts arriving.
 

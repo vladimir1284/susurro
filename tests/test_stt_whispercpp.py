@@ -116,3 +116,16 @@ def test_speech_next_to_an_annotation_survives() -> None:
 
     segments = feed_seconds(recognizer(handler), 1.0)
     assert [s.text for s in segments] == ["hola (bien)"]
+
+
+def test_the_language_sent_to_the_server_follows_the_session() -> None:
+    seen: list[bool] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(b'name="language"\r\n\r\nen' in request.read())
+        return httpx.Response(200, json={"segments": []})
+
+    instance = recognizer(handler)  # built as "es"
+    instance.select_language("en")
+    feed_seconds(instance, 1.0)
+    assert seen == [True]

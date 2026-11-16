@@ -866,6 +866,8 @@ class TestRecognizerOffTheEventLoop:
             language = "en"
             calls = 0
 
+            def select_language(self, language) -> None: ...
+
             def warmup(self) -> None: ...
 
             def reset(self) -> None: ...
@@ -900,6 +902,18 @@ class TestRecognizerOffTheEventLoop:
 
         await console.close()
 
+    async def test_the_session_takes_its_language_from_the_profile(
+        self, url: str, core: Core
+    ) -> None:
+        # The recognizer is built once, from configuration, in English. A
+        # Spanish profile must still get a Spanish recognizer; otherwise
+        # whisper translates what it hears instead of transcribing it.
+        assert core.recognizer.language == "en"
+        console = await open_console(url)
+        await go_live(console, "es-business-industrial", "es", "business")
+        assert core.recognizer.language == "es"
+        await console.close()
+
     async def test_the_model_is_loaded_before_the_session_goes_live(
         self, url: str, core: Core
     ) -> None:
@@ -909,6 +923,8 @@ class TestRecognizerOffTheEventLoop:
 
         class RecordingRecognizer:
             language = "en"
+
+            def select_language(self, language) -> None: ...
 
             def warmup(self) -> None:
                 order.append("warmup")
@@ -934,6 +950,8 @@ class TestRecognizerOffTheEventLoop:
     ) -> None:
         class SlowToLoad:
             language = "en"
+
+            def select_language(self, language) -> None: ...
 
             def warmup(self) -> None:
                 import time as _time

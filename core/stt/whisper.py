@@ -87,6 +87,17 @@ class WhisperRecognizer:
 
     # -- interface ----------------------------------------------------------- #
 
+    def select_language(self, language: Language) -> None:
+        """Switch language, dropping a loaded model that no longer fits.
+
+        The default model depends on the language, so a model loaded for one is
+        wrong for the other. An explicit ``model_size`` is the same either way.
+        """
+        previous = self.model_name
+        self.language = language
+        if self.model_name != previous:
+            self._model = None
+
     def warmup(self) -> None:
         """Load the weights now rather than on the first frame.
 

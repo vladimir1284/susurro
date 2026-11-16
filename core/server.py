@@ -467,6 +467,7 @@ class Core:
         await self.broadcast(self.state_event())
         try:
             async with self._recognizer_lock:
+                self.recognizer.select_language(profile.language)
                 await asyncio.to_thread(self.recognizer.warmup)
         finally:
             self._stt_status = "ready"

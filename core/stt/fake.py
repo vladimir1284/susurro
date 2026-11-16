@@ -46,6 +46,9 @@ class ScriptedRecognizer:
     def __post_init__(self) -> None:
         self.reset()
 
+    def select_language(self, language: Language) -> None:
+        self.language = language
+
     def warmup(self) -> None:
         """Nothing to load. The point of this backend is that there is not."""
 

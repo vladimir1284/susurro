@@ -63,6 +63,30 @@ class TestModelSelection:
     def test_the_model_can_be_overridden(self) -> None:
         assert WhisperRecognizer(model_size="tiny").model_name == "tiny"
 
+    def test_selecting_a_language_changes_the_default_model(self) -> None:
+        instance = WhisperRecognizer(language="en")
+        instance._model = object()
+        instance.select_language("es")
+        assert instance.language == "es"
+        assert instance.model_name == DEFAULT_MODELS["es"]
+        # The loaded model was the English one; keeping it would transcribe
+        # Spanish with the wrong weights.
+        assert instance._model is None
+
+    def test_selecting_the_same_language_keeps_the_loaded_model(self) -> None:
+        instance = WhisperRecognizer(language="es")
+        loaded = object()
+        instance._model = loaded
+        instance.select_language("es")
+        assert instance._model is loaded
+
+    def test_an_explicit_model_survives_a_language_change(self) -> None:
+        instance = WhisperRecognizer(language="en", model_size="tiny")
+        loaded = object()
+        instance._model = loaded
+        instance.select_language("es")
+        assert instance._model is loaded
+
     def test_constructing_does_not_load_a_model(self) -> None:
         # Building a core must stay cheap; the weights load on first use.
         assert WhisperRecognizer(model_size="tiny")._model is None

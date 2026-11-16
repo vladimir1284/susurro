@@ -12,6 +12,7 @@ profiles = "profiles"
 # "fake" needs no model and replays a script. "whisper" uses faster-whisper.
 # "whispercpp" talks to a whisper.cpp `whisper-server` at base_url.
 backend = "whisper"
+# Only the default: a session takes its language from its profile.
 language = "en"
 # base_url = "http://127.0.0.1:8081"   # whispercpp only
 # Leave unset to take the per-language default from core/stt/whisper.py.
