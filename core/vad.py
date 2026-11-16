@@ -36,6 +36,9 @@ log = logging.getLogger("susurro.vad")
 #: the same size so both produce events on the same grid.
 WINDOW_SAMPLES = 512
 WINDOW_MS = WINDOW_SAMPLES * 1000 // SAMPLE_RATE
+#: Samples of the previous window that Silero expects in front of each new one
+#: at 16 kHz.
+CONTEXT_SAMPLES = 64
 
 
 class VadEvent(StrEnum):
@@ -156,9 +159,17 @@ class SileroDetector(_Windowed):
     this loads that file and runs it: ``pip install --no-deps silero-vad`` plus
     ``onnxruntime`` is the whole requirement.
 
-    The negative direction is verified — silence and broadband noise both score
-    far below the threshold. The positive direction has never been checked
-    here, because that needs real speech audio this repository does not ship.
+    The model is stateful in two ways. ``state`` is the recurrent state, and the
+    last 64 samples of the previous window must be prepended to each new one --
+    the model sees 576 samples, not 512. Skipping the context is silent: it
+    still runs and still returns a probability, but speech scores near 0.1
+    instead of near 1.0, so nothing ever opens an utterance. Silence and noise
+    score low either way, which is why a test of only the negative direction
+    could not see it.
+
+    Checked on synthesized speech: 166 of 173 windows above the threshold with
+    the context, none without. Real speech over a real line is still to be
+    heard.
     """
 
     def __init__(self, threshold: float = 0.5, model_path: str | None = None, **kwargs):
@@ -166,17 +177,21 @@ class SileroDetector(_Windowed):
         self.threshold = threshold
         self._session = _load_silero(model_path)
         self._state = np.zeros((2, 1, 128), dtype=np.float32)
+        self._context = np.zeros(CONTEXT_SAMPLES, dtype=np.float32)
         self._sr = np.array(SAMPLE_RATE, dtype=np.int64)
 
     def _is_speech(self, samples: np.ndarray) -> bool:
+        framed = np.concatenate([self._context, samples])
+        self._context = samples[-CONTEXT_SAMPLES:]
         probability, self._state = self._session.run(
-            None, {"input": samples[None, :], "state": self._state, "sr": self._sr}
+            None, {"input": framed[None, :], "state": self._state, "sr": self._sr}
         )
         return bool(probability[0][0] >= self.threshold)
 
     def reset(self) -> None:
         super().reset()
         self._state = np.zeros((2, 1, 128), dtype=np.float32)
+        self._context = np.zeros(CONTEXT_SAMPLES, dtype=np.float32)
 
 
 def _load_silero(model_path: str | None):

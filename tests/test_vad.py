@@ -171,6 +171,43 @@ class TestSileroDetector:
         detector.reset()
         assert detector.speaking is False
 
+    def test_each_window_reaches_the_model_with_the_previous_windows_tail(self) -> None:
+        # The model wants 64 samples of context in front of every 512. Without
+        # them it runs, returns a probability, and scores real speech near 0.1:
+        # nothing ever opens an utterance, and a test of silence cannot tell.
+        seen: list[np.ndarray] = []
+
+        class Recorder:
+            def run(self, _names, feed):
+                seen.append(feed["input"][0].copy())
+                return [np.array([[0.0]], dtype=np.float32)], feed["state"]
+
+        detector = SileroDetector()
+        detector._session = Recorder()
+        first = (np.arange(512) % 100).astype(np.int16)
+        second = (np.arange(512) % 100 + 1000).astype(np.int16)
+        detector.push(first.tobytes() + second.tobytes())
+
+        assert [len(window) for window in seen] == [576, 576]
+        assert not seen[0][:64].any()  # nothing came before the first window
+        scaled = first.astype(np.float32) / 32768.0
+        assert np.array_equal(seen[1][:64], scaled[-64:])
+
+    def test_reset_forgets_the_context_as_well_as_the_state(self) -> None:
+        seen: list[np.ndarray] = []
+
+        class Recorder:
+            def run(self, _names, feed):
+                seen.append(feed["input"][0].copy())
+                return [np.array([[0.0]], dtype=np.float32)], feed["state"]
+
+        detector = SileroDetector()
+        detector._session = Recorder()
+        detector.push(tone(32))
+        detector.reset()
+        detector.push(tone(32))
+        assert not seen[-1][:64].any()
+
 
 class TestBuildDetector:
     def test_off_means_no_detector(self) -> None:
