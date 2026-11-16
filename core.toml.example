@@ -41,6 +41,11 @@ threshold = 0.5
 # call 16 (0.5 s) cut a question at its comma, and 31 or 47 only added delay.
 start_windows = 2
 end_windows = 24
+# With loudspeakers the mic also hears the far voice. While the far lane is loud,
+# mic frames quieter than this multiple of it are silenced. 0 turns it off. A
+# quiet user talking over the other person can lose words at 2.0; headphones are
+# the better fix.
+bleed_ratio = 2.0
 
 [llm]
 # "fake" returns canned text. "openai" talks to any OpenAI-compatible server:

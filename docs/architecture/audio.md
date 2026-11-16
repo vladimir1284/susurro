@@ -68,11 +68,33 @@ different reasons:
 | Edge | Default | Why |
 |---|---|---|
 | Opening an utterance | 2 windows (~64 ms) | A door closing is not speech. |
-| Closing one | 16 windows (~512 ms) | The pauses inside a sentence are longer than people expect. |
+| Closing one | 24 windows (~768 ms) | The pauses inside a sentence are longer than people expect. At 16 (~512 ms) a recorded question was cut at its comma. |
 
 The closing number is the one that matters. Set it too low and end-of-turn fires during a
 breath, mid-sentence — the single most annoying failure this component can have, because
 it produces a confident hint about half a question.
+
+### Loudspeakers
+
+With speakers instead of headphones, the microphone hears the other person a moment after
+their own lane does, and the recognizer writes their words down as the user's. The far lane is
+a clean copy of what the speakers play, so while it is loud, a mic frame that is not clearly
+louder than it is replaced by silence before the detector or the recognizer sees it
+(`core/bleed.py`). The test is relative, not a fixed level, because bleed and the far lane
+scale together with the speaker volume.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `[vad] bleed_ratio` | 2.0 | Mic frames below this multiple of the far lane's level (held 0.6 s) are silenced. `0` turns it off. |
+
+On the recorded call, three lines of eleven on the mic lane that the user never said disappeared (one of them
+"nos vemos en el próximo vídeo", invented from the far voice) and every line the user spoke
+stayed, with the same error rate. In a synthetic mix of the user's voice over the far voice,
+speech at about half the usual level was kept in 95 % of the frames at 2.0 and speech at a
+fifth of it in 57 %, so a quiet user talking over the other person can lose words. The rule
+also depends on where the microphone is: next to the speakers, the bleed is louder than the
+ratio expects and gets through. Headphones remain the better answer. One recording; these are
+measurements, not guarantees.
 
 ### Running it without torch
 

@@ -29,6 +29,7 @@ from websockets.http11 import Response
 
 from core import protocol as p
 from core.audio import DecodeError, LaneDecoder
+from core.bleed import BleedGate
 from core.llm.base import HintContext, HintGenerator
 from core.session import vocabulary
 from core.session.history import (
@@ -104,6 +105,9 @@ class Core:
     #: Per-lane voice activity. ``None`` disables end-of-turn detection, which
     #: leaves hints manual -- everything else still works.
     detectors: dict[str, Detector] | None = None
+    #: Keeps the far voice, played through loudspeakers, out of the mic lane.
+    #: ``None`` leaves the mic lane as captured.
+    bleed: BleedGate | None = None
     #: Recorded sessions. Disabled unless configured, because a tool that
     #: writes every conversation to disk unasked is not one to trust.
     history: HistoryStore | None = None
@@ -319,6 +323,12 @@ class Core:
         index = self._frames_in.get(lane, 0)
         self._frames_in[lane] = index + 1
         timestamp_us = index * FRAME_US
+
+        if self.bleed is not None:
+            if lane == "far":
+                self.bleed.far(pcm)
+            elif lane == "mic":
+                pcm = self.bleed.mic(pcm)
 
         detector = (self.detectors or {}).get(lane)
         if detector is None:
@@ -593,6 +603,8 @@ class Core:
         self.decoder.reset()
         for detector in (self.detectors or {}).values():
             detector.reset()
+        if self.bleed is not None:
+            self.bleed.reset()
         self._preroll.clear()
         self._frames_in.clear()
         # Once per session, not once per hint. This is the whole latency

@@ -69,11 +69,33 @@ motivos distintos:
 | Flanco | Por defecto | Por qué |
 |---|---|---|
 | Abrir una locución | 2 ventanas (~64 ms) | Una puerta que se cierra no es voz. |
-| Cerrarla | 16 ventanas (~512 ms) | Las pausas dentro de una frase son más largas de lo que la gente cree. |
+| Cerrarla | 24 ventanas (~768 ms) | Las pausas dentro de una frase son más largas de lo que la gente cree. Con 16 (~512 ms) una pregunta grabada se cortó en su coma. |
 
 El número de cierre es el que importa. Si se pone demasiado bajo, el fin de turno salta
 durante una respiración, a mitad de frase: el fallo más molesto que puede tener este
 componente, porque produce una sugerencia confiada sobre media pregunta.
+
+### Altavoces
+
+Con altavoces en lugar de auriculares, el micrófono oye a la otra persona un instante después
+de que lo haga su propio carril, y el reconocedor apunta sus palabras como si fueran del usuario.
+El carril `far` es una copia limpia de lo que suenan los altavoces, así que mientras está alto,
+un fotograma del micrófono que no sea claramente más fuerte que él se sustituye por silencio
+antes de que lo vea el detector o el reconocedor (`core/bleed.py`). La prueba es relativa, no un
+nivel fijo, porque la fuga y el carril `far` suben y bajan juntos con el volumen.
+
+| Ajuste | Por defecto | Significado |
+|---|---|---|
+| `[vad] bleed_ratio` | 2.0 | Los fotogramas del micrófono por debajo de este múltiplo del nivel del carril `far` (retenido 0.6 s) se silencian. `0` lo desactiva. |
+
+En la llamada grabada desaparecieron tres de las once líneas del carril `mic` que el usuario nunca dijo (una
+fue "nos vemos en el próximo vídeo", inventada a partir de la voz lejana) y se conservaron todas
+las que dijo el usuario, con la misma tasa de error. En una mezcla sintética de la voz del usuario
+sobre la voz lejana, el habla a la mitad del nivel habitual se conservó en el 95 % de los
+fotogramas con 2.0, y a una quinta parte, en el 57 %: un usuario que hable bajo encima del otro
+puede perder palabras. La regla también depende de dónde esté el micrófono: pegado a los
+altavoces, la fuga es más fuerte de lo que el ratio espera y pasa. Los auriculares siguen siendo
+la mejor respuesta. Una grabación; son mediciones, no garantías.
 
 ### Ejecutarlo sin torch
 

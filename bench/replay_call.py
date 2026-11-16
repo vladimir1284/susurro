@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from bench.wer import score, term_recall
+from core.bleed import BleedGate
 from core.llm.fake import CannedHintGenerator
 from core.main import build_detectors
 from core.protocol import FRAME_MS, SAMPLE_RATE
@@ -63,13 +64,14 @@ def load_lane(directory: Path, lane: str, start_s: float, end_s: float) -> bytes
 
 async def replay(
     recognizer: Recognizer, directory: Path, start_s: float, end_s: float,
-    end_windows: int = 16,
+    end_windows: int = 16, bleed_ratio: float = 0.0,
 ) -> Replay:
     core = Core(
         profiles=ProfileStore(PROFILES),
         recognizer=recognizer,
         generator=CannedHintGenerator(),
         token="replay",
+        bleed=BleedGate(ratio=bleed_ratio) if bleed_ratio > 0 else None,
         detectors=build_detectors(
             {"backend": "silero", "threshold": 0.5, "start_windows": 2, "end_windows": end_windows}
         ),
@@ -153,6 +155,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="seconds of new audio between partial transcriptions")
     parser.add_argument("--end-windows", type=int, default=16,
                         help="32 ms windows of silence that end a turn (16 is about 0.5 s)")
+    parser.add_argument("--bleed-ratio", type=float, default=0.0,
+                        help="silence mic frames quieter than this times the far lane (0 is off)")
     parser.add_argument("--script", type=Path, help="JSON script to score against")
     parser.add_argument("--out", type=Path, help="write the finals and summary here (new file)")
     args = parser.parse_args(argv)
@@ -178,7 +182,8 @@ def main(argv: list[str] | None = None) -> int:
     recognizer.warmup()
 
     result = asyncio.run(
-        replay(recognizer, args.session, args.start, args.end or total, args.end_windows)
+        replay(recognizer, args.session, args.start, args.end or total, args.end_windows,
+                args.bleed_ratio)
     )
     script = json.loads(args.script.read_text(encoding="utf-8")) if args.script else None
     summary = report(result, script)

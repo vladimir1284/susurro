@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from core.bleed import BleedGate
 from core.llm.base import HintGenerator
 from core.server import CONSOLE_ROOT, DEFAULT_PORT, Core, load_config, run
 from core.session.history import HistoryStore
@@ -86,6 +87,12 @@ def build_detectors(config: dict[str, Any]) -> dict[str, Detector] | None:
     if far is None:
         return None
     return {"far": far, "mic": build_detector(config)}
+
+
+def build_bleed(config: dict[str, Any]) -> BleedGate | None:
+    """The loudspeaker rule for the mic lane. ``bleed_ratio = 0`` turns it off."""
+    ratio = float(config.get("bleed_ratio", BleedGate.ratio))
+    return BleedGate(ratio=ratio) if ratio > 0 else None
 
 
 def build_history(config: dict[str, Any]) -> HistoryStore:
@@ -160,6 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         generator=build_generator(config.get("llm", {})),
         token=token,
         detectors=build_detectors(config.get("vad", {})),
+        bleed=build_bleed(config.get("vad", {})),
         history=build_history(config.get("session", {})),
     )
 
