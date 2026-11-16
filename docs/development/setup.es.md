@@ -73,13 +73,33 @@ haya.
 
 | Ajuste | Valores | Notas |
 |---|---|---|
-| `[stt] backend` | `fake`, `whisper` | `fake` reproduce un guion y no necesita modelo. |
+| `[stt] backend` | `fake`, `whisper`, `whispercpp` | `fake` reproduce un guion y no necesita modelo. `whispercpp` habla con un `whisper-server` de whisper.cpp en `[stt] base_url`, así que el modelo puede correr en otra máquina y no se descarga nada. |
 | `[session] record` | `false`, `true` | Apagado por defecto. Encendido, las sesiones se escriben en `[session] directory`. |
 | `[vad] backend` | `silero`, `energy`, `off` | `off` deja las sugerencias manuales. |
 | `[llm] backend` | `fake`, `openai` | `openai` es cualquier servidor compatible con OpenAI: `llama.cpp`, Ollama, vLLM, LM Studio. |
 
 Instala solo lo que uses: `.[core]` a secas te da los fakes, que bastan para trabajar en la
 consola, el protocolo o el cliente de captura.
+
+### Reproducir una llamada grabada
+
+Todos los falsos de aquí son más amables que una llamada. En una llamada hay dos carriles hablando a
+la vez, uno filtrándose en el micrófono del otro, un servidor de modelo que se ralentiza por razones
+que nadie vigila, y no hay botón de pausa. `bench.replay_call` alimenta dos carriles grabados
+(`mic.wav` y `far.wav`, 16 kHz mono) por el enrutado, la detección de voz y el reconocedor reales a
+ritmo de tiempo real, e informa de cuánto tardan los finales, el error de palabras frente a un guion y
+si los términos clave salieron bien:
+
+```bash
+.venv/bin/python -m bench.replay_call grabaciones/llamada1 --start 150 --end 300 \
+    --script bench/fixtures/call_script_es.json --profile es-business-industrial
+```
+
+`--extra-latency 1.0` añade un segundo a cada petición al modelo, para ver cómo se comporta el flujo con
+un servidor lento; `--max-lag 1e9` desactiva la supresión de parciales para comparar. La puntuación
+alinea cada frase del guion por separado, así que las palabras dichas fuera de guion no cuestan nada.
+Nunca sobrescribe un archivo `--out` existente. El audio de una llamada real es privado: no lo metas en
+el repositorio.
 
 ## Ejecutar el cliente de captura
 

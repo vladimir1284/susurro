@@ -72,13 +72,32 @@ exist.
 
 | Setting | Values | Notes |
 |---|---|---|
-| `[stt] backend` | `fake`, `whisper` | `fake` replays a script and needs no model. |
+| `[stt] backend` | `fake`, `whisper`, `whispercpp` | `fake` replays a script and needs no model. `whispercpp` talks to a whisper.cpp `whisper-server` at `[stt] base_url`, so the model can run on another machine and nothing is downloaded. |
 | `[session] record` | `false`, `true` | Off by default. When on, sessions are written to `[session] directory`. |
 | `[vad] backend` | `silero`, `energy`, `off` | `off` leaves hints manual. |
 | `[llm] backend` | `fake`, `openai` | `openai` means any OpenAI-compatible server — `llama.cpp`, Ollama, vLLM, LM Studio. |
 
 Install only what you use: `.[core]` alone gives you the fakes, which is enough to work on
 the console, the protocol or the capture client.
+
+### Replaying a recorded call
+
+Every fake here is kinder than a call. A call has two lanes speaking at once, one leaking into
+the other's microphone, a model server that slows down for reasons nobody is watching, and no
+pause button. `bench.replay_call` feeds two recorded lanes (`mic.wav` and `far.wav`, 16 kHz
+mono) through the real routing, voice activity detection and recognizer at real-time pace and
+reports how late the finals arrive, the word error rate against a script, and whether the key
+terms came through:
+
+```bash
+.venv/bin/python -m bench.replay_call recordings/call1 --start 150 --end 300 \
+    --script bench/fixtures/call_script_es.json --profile es-business-industrial
+```
+
+`--extra-latency 1.0` adds a second to every model request, to see how the pipeline behaves on
+a slow server; `--max-lag 1e9` turns partial shedding off to compare. Scoring aligns each
+scripted sentence on its own, so words said off-script cost nothing. It never overwrites an
+existing `--out` file. The audio of a real call is private: keep it out of the repository.
 
 ## Running the capture client
 

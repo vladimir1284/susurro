@@ -130,6 +130,59 @@ supondría reescribir el prompt en cada pasada, lo que destruye la caché de pre
 que depende la
 [Inferencia](inference.md#la-cache-de-prompt-es-un-requisito-no-una-optimizacion).
 
+### El detector decide qué oye el reconocedor
+
+No todas las tramas llegan al reconocedor. Mientras nadie habla se retienen; cuando el detector
+abre un turno se liberan primero los últimos 300 ms (el detector necesita unas ventanas para estar
+seguro y el primer sonido de la frase ya pasó), y el turno se cierra en el momento en que el detector
+lo oye terminar, no cuando vence el temporizador de silencio del reconocedor. Ese cierre ocurre antes
+de que nada reaccione al fin del turno, así que un hint especulativo se escribe sobre una transcripción
+que ya contiene la frase a la que responde.
+
+No es solo orden. Si el reconocedor decodifica todos los carriles de forma continua, silencio incluido,
+re-decodifica una ventana de hasta 12 s cada segundo en ambos carriles. Un servidor whisper.cpp atiende
+una petición a la vez, así que en una llamada grabada la cola creció hasta que una petición agotó su
+tiempo, y el silencio es también de donde estos modelos inventan palabras. Con esa grabación, el mismo
+audio pasó de 75 peticiones que ocupaban al servidor 43 s para 37 s de audio a 15 peticiones y 8 s.
+
+Con `backend = "off"` no hay detector y el reconocedor lo oye todo, como antes. Los tiempos de los
+segmentos siguen el reloj de tramas del propio carril, así que continúan contando durante el silencio
+que nunca se decodificó.
+
+### Leer no es reconocer
+
+El socket de un carril lo lee una tarea y su audio lo reconoce otra, unidas por una cola. Cuando el
+propio bucle de lectura esperaba al reconocedor, dejaba de leer siempre que Whisper iba lento, la
+biblioteca de websockets dejaba de responder a los pings con él, y el cliente de captura daba el carril
+por muerto tras 20 s de keepalive. Un test lo fija: con el reconocedor atascado, un ping se responde. Lo
+que ya se había recibido se transcribe igualmente al cerrarse un carril. Por su parte, el cliente
+reintenta un carril que el core aún cree ocupado por su propia conexión muerta, en vez de salir.
+
+### Quedarse atrás del tiempo real
+
+El intervalo de parciales cuenta audio, y el audio sigue llegando mientras una decodificación lenta
+corre. Con un servidor lento, los parciales se acumulan unos tras otros y el reconocimiento se atrasa
+cada segundo más. Por eso cada carril compara el audio procesado con el tiempo real transcurrido; si
+va más de 1.5 s por detrás, deja de pedir parciales hasta estar a menos de 0.5 s. Los finales nunca se
+retienen: un parcial es una cortesía para la pantalla, y el final es lo que alimenta al hint.
+
+Medido reproduciendo una llamada grabada a tiempo real con el servidor tardando ~1.5 s por petición,
+como en vivo: los finales llegaban 59 s tarde de media sin esto y 6 s con ello. Es una cota, no una
+cura: lo que queda son las propias decodificaciones finales, cada una con un coste fijo de codificador
+de aproximadamente medio segundo, sea cual sea la ventana. `python -m bench.replay_call` lo reproduce
+con cualquier grabación de dos carriles.
+
+### Vocabulario del perfil
+
+Un reconocedor decodifica hacia lo común, así que las palabras que más importan en una sesión son las
+que oye como otra cosa: "Modbus TCP" salió como "Mobbus", "TimescaleDB" como "Tyscale de B". El perfil
+ya contiene el texto que las nombra. `core/session/vocabulary.py` extrae términos candidatos por su forma
+(mayúsculas dentro de una palabra, dígitos, siglas, palabras con mayúscula que no abren frase) y el core
+se los entrega al reconocedor al iniciar la sesión como prompt inicial. En la llamada grabada en español,
+el error de palabras del carril del micrófono pasó de 13.6 % a 5.5 % y los términos clave de 7/9 a 9/9,
+sin que el prompt se filtrara a la transcripción. Una llamada, unas 100 palabras por carril: una medición,
+no un benchmark.
+
 ### Un solo idioma por sesión
 
 Una sesión está en exactamente un idioma, declarado en el perfil antes de que la sesión

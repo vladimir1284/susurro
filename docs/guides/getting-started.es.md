@@ -47,6 +47,18 @@ entero salvo las dos piezas caras.
 La última línea va aparte a propósito. `silero-vad` declara dependencia de torch, y solo se
 usa el fichero ONNX de 2 MB que trae, así que instalar torch por él sería absurdo.
 
+**¿Ya tienes whisper.cpp?** No necesitas `faster-whisper` y no se descarga nada. Arranca
+`whisper-server -m <modelo ggml> -l <idioma> --port 8081` donde viva el modelo y apunta el core ahí:
+
+```toml
+[stt]
+backend = "whispercpp"
+base_url = "http://127.0.0.1:8081"
+```
+
+El core sigue funcionando si esa máquina está al otro lado de la red; haz un túnel del puerto en vez
+de exponerlo, porque `whisper-server` no tiene autenticación.
+
 Después arranca un servidor de modelo de lenguaje. Cualquiera de estos habla la API que
 Susurro espera:
 

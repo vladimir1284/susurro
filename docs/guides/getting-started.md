@@ -45,6 +45,19 @@ whole system apart from the two expensive pieces.
 The last line is separate on purpose. `silero-vad` declares a dependency on torch, and
 only the 2 MB ONNX file it ships is used, so installing torch for it would be absurd.
 
+**Already running whisper.cpp?** You do not need `faster-whisper` at all, and nothing is
+downloaded. Start `whisper-server -m <ggml model> -l <language> --port 8081` wherever the model
+lives and point the core at it:
+
+```toml
+[stt]
+backend = "whispercpp"
+base_url = "http://127.0.0.1:8081"
+```
+
+The core keeps working if that machine is across the network; tunnel the port rather than
+exposing it, since `whisper-server` has no authentication.
+
 Then start a language model server. Either of these speaks the API Susurro expects:
 
 ```bash

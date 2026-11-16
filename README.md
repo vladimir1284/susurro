@@ -49,15 +49,16 @@ The plumbing is built and tested. The measurements are not taken.
 | Wire protocol | Done — `core/protocol.py` |
 | Core server, session state, profiles | Done — `core/server.py`, `core/session/` |
 | Capture client, Opus, WAV replay | Done — `capture/` |
-| PulseAudio capture (`parec`) | Done — `capture/backends/pulse.py`. Run against a real microphone and monitor; **never used in a real meeting.** |
+| PulseAudio capture (`parec`) | Done — `capture/backends/pulse.py`. Used on one real Google Meet call, with a USB microphone and the sink monitor. The client died mid-call on a reconnection bug, since fixed; one call is the whole of the field testing. |
 | PipeWire capture | **Written, never executed.** No audio devices on the development machine. |
 | Console | Done — `console/`, driven by browser tests |
 | Speech backend (faster-whisper) | Done — `core/stt/whisper.py` |
+| Speech backend (whisper.cpp server) | Done — `core/stt/whispercpp.py`. On the recorded call: word error 9% far lane, 4.5% microphone, about 100 words per lane. |
 | Hint backend (any OpenAI-compatible server) | Done — `core/llm/openai_compat.py` |
-| Voice activity, end-of-turn, speculative hints | Done — `core/vad.py`. Verified on silence, noise and tones; **never exercised on real speech.** |
+| Voice activity, end-of-turn, speculative hints | Done — `core/vad.py`. Found broken on real speech (the model was missing its 64-sample context) and fixed; exercised on one recorded two-lane Spanish call, where speculative hints fired live. One call is not a variety of voices or lines. |
 | Session recording and export | Done — `core/session/history.py`. **Off by default.** |
 | M0 benchmark harness | Done — `bench/` |
-| **M0 measurements** | **Not taken.** Needs the Mac mini. |
+| **M0 measurements** | **Not taken.** A recorded call has been replayed against whisper.cpp `small` on the Mac mini (`python -m bench.replay_call`), which is not the M0 benchmark. The Mac's speed varied by about 3x over an evening. |
 
 Everything can run without models: the core ships fake speech and hint backends, and the
 capture client can replay a WAV instead of opening a device. That is how the console, the

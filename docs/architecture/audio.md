@@ -50,7 +50,8 @@ client for the same reason everything else does: the client stays trivial to por
 
 It produces two things:
 
-1. **Segment boundaries**, so a transcription pass is given speech rather than silence.
+1. **Segment boundaries**, so a transcription pass is given speech rather than silence (see
+   [below](#the-detector-decides-what-the-recognizer-hears)).
 2. **End-of-turn events on the `far` lane**, which start a hint before anyone asks for
    one.
 
@@ -125,6 +126,60 @@ Each lane produces two kinds of output:
 Only finals enter the language model's context. Feeding partials in would mean rewriting
 the prompt on every pass, which destroys the prefix cache that
 [Inference](inference.md#prompt-cache-is-a-requirement-not-an-optimization) depends on.
+
+### The detector decides what the recognizer hears
+
+Frames are not all sent to the recognizer. While nobody is speaking they are held back; when
+the detector opens an utterance, the last 300 ms are released first (the detector needs a
+few windows to be sure, and the first sound of a sentence is already behind it by then), and
+the utterance is closed the moment the detector hears it end, not after the recognizer's own
+silence timer. That close happens before anything reacts to the turn ending, so a speculative
+hint is written against a transcript that already holds the sentence it answers.
+
+This is not only tidiness. Left to decode every lane continuously, silence included, the
+recognizer re-decodes a window of up to 12 s every second on both lanes. A whisper.cpp server
+answers one request at a time, so on a recorded call the queue grew until a request timed out,
+and silence is also what these models invent words from. On that recording the same audio went
+from 75 decode requests keeping the server busy 43 s for 37 s of audio to 15 requests and 8 s.
+
+With `backend = "off"` there is no detector and the recognizer hears everything, as before.
+Segment times follow the lane's own frame clock, so they keep counting through the silence
+that was never decoded.
+
+### Reading is separate from recognizing
+
+A lane's socket is read by one task and its audio recognized by another, joined by a queue.
+When the read loop itself awaited the recognizer it stopped reading whenever Whisper was slow,
+the websocket library stopped answering pings along with it, and the capture client gave the
+lane up for dead after its 20 s keepalive timeout. A test pins this: with the stalled
+recognizer, a ping is answered. What was already received is still transcribed when a lane
+closes. The client, for its part, retries a lane the core still believes is held by its own
+dead connection, instead of exiting.
+
+### Falling behind real time
+
+The partial interval counts audio, and audio keeps arriving while a slow decode runs. On a slow
+model server the partials pile up one behind another and recognition falls further behind with
+every second. Each lane therefore compares the audio it has processed with the wall time elapsed;
+past 1.5 s behind, it stops asking for partials until it is within 0.5 s. Finals are never
+withheld: a partial is a courtesy to the screen, and the final is what a hint is written from.
+
+Measured by replaying a recorded call at real time with the model server taking about 1.5 s per
+request, as it did live: finals arrived 59 s late on average without this and 6 s late with it.
+It is a bound, not a cure: what remains is the final decodes themselves, each carrying a fixed
+encoder cost of roughly half a second whatever the window length. `python -m bench.replay_call`
+reproduces this against any two-lane recording.
+
+### Vocabulary from the profile
+
+A recognizer decodes toward what is common, so the words that matter most in a session are the
+ones it hears as something else: "Modbus TCP" came out as "Mobbus", "TimescaleDB" as "Tyscale de
+B". The profile already holds the text that names them. `core/session/vocabulary.py` lifts
+candidate terms from it by shape (capitals inside a word, digits, acronyms, capitalised words
+that do not start a sentence) and the core hands them to the recognizer at session start as its
+initial prompt. On the recorded Spanish call, word error on the microphone lane went from 13.6%
+to 5.5% and the key terms from 7/9 to 9/9, with no leakage of the prompt into the transcript.
+One call, about 100 words per lane: a measurement, not a benchmark.
 
 ### One language per session
 
