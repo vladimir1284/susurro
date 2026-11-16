@@ -148,6 +148,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="seconds added to every request, to simulate a slower server")
     parser.add_argument("--max-lag", type=float, default=1.5,
                         help="seconds behind real time before partials are shed; 1e9 turns it off")
+    parser.add_argument("--partial-interval", type=float, default=1.0,
+                        help="seconds of new audio between partial transcriptions")
     parser.add_argument("--script", type=Path, help="JSON script to score against")
     parser.add_argument("--out", type=Path, help="write the finals and summary here (new file)")
     args = parser.parse_args(argv)
@@ -156,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
         total = probe.getnframes() / probe.getframerate()
     recognizer = WhisperCppRecognizer(
         language=args.language, base_url=args.stt_url, partial_max_lag_s=args.max_lag,
-        prompt=args.prompt,
+        partial_interval_s=args.partial_interval, prompt=args.prompt,
     )
     if args.extra_latency:
         inner = recognizer._transcribe
