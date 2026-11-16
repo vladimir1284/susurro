@@ -8,6 +8,7 @@ roadmap exists. Nothing in this file pretends otherwise.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import math
 import struct
@@ -21,7 +22,7 @@ from websockets.asyncio.server import ServerConnection, serve
 
 from capture.backends.base import SourceError
 from capture.backends.file import WavSource, write_wav
-from capture.client import CaptureError, stream_lane, stream_session
+from capture.client import CaptureError, stream_lane, stream_lane_forever, stream_session
 from capture.codec import FRAME_BYTES, FRAME_SAMPLES, CodecError, OpusEncoder
 from core import protocol as p
 from core.audio import LaneDecoder
@@ -365,3 +366,79 @@ class TestWhenTheLinkIsUnreliable:
         assert first is not second
         assert len(list(first.frames())) == 10
         assert len(list(second.frames())) == 10
+
+
+class TestReconnectionAndABusyLane:
+    """A link that dies without a close frame leaves the core thinking the lane
+    is held until its keepalive gives up. The client's retry lands in that
+    window, and used to treat the core's `lane_busy` as fatal: the capture
+    process died and the rest of the call was never transcribed.
+    """
+
+    @staticmethod
+    def fake_source():
+        class Quiet:
+            description = "quiet"
+
+            def frames(self):
+                yield bytes(FRAME_BYTES)
+
+            def close(self) -> None: ...
+
+        return Quiet()
+
+    async def serve_busy(self, busy_times: int):
+        """A core that refuses the lane `busy_times` times, then accepts it."""
+        seen = {"hellos": 0}
+
+        async def handler(connection: ServerConnection) -> None:
+            await connection.recv()
+            seen["hellos"] += 1
+            if seen["hellos"] <= busy_times:
+                await connection.send(p.error("lane_busy", "lane 'mic' is already connected"))
+                return
+            await connection.send(p.ready())
+            with contextlib.suppress(websockets.exceptions.ConnectionClosed):
+                async for _ in connection:
+                    pass
+
+        return seen, serve(handler, "127.0.0.1", 0)
+
+    async def test_a_first_connection_that_finds_the_lane_busy_still_fails(self) -> None:
+        # Someone else holds it. That is a mistake to report, not to retry.
+        seen, server_cm = await self.serve_busy(busy_times=99)
+        async with server_cm as server:
+            port = server.sockets[0].getsockname()[1]
+            with pytest.raises(CaptureError, match="lane_busy"):
+                await stream_lane_forever(
+                    f"ws://127.0.0.1:{port}", TOKEN, "s", "mic", self.fake_source,
+                    max_attempts=3,
+                )
+        assert seen["hellos"] == 1
+
+    async def test_a_busy_lane_after_a_connection_is_retried(self, monkeypatch) -> None:
+        monkeypatch.setattr("capture.client.RECONNECT_DELAY_S", 0.01)
+        hellos = {"n": 0}
+
+        async def handler(connection: ServerConnection) -> None:
+            await connection.recv()
+            hellos["n"] += 1
+            if hellos["n"] == 2:  # the retry, while the dead socket still holds the lane
+                await connection.send(p.error("lane_busy", "lane 'mic' is already connected"))
+                return
+            await connection.send(p.ready())
+            if hellos["n"] == 1:
+                await connection.close(code=1011)  # dies after opening, no goodbye
+                return
+            with contextlib.suppress(websockets.exceptions.ConnectionClosed):
+                async for _ in connection:
+                    pass
+
+        async with serve(handler, "127.0.0.1", 0) as server:
+            port = server.sockets[0].getsockname()[1]
+            await stream_lane_forever(
+                f"ws://127.0.0.1:{port}", TOKEN, "s", "mic", self.fake_source,
+                max_attempts=6,
+            )
+        # opened, dropped, found busy, retried, opened again, source ended.
+        assert hellos["n"] == 3

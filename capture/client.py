@@ -16,7 +16,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 import websockets
 
@@ -45,6 +45,16 @@ class CaptureError(Exception):
     pass
 
 
+class LaneBusy(CaptureError):
+    """The core still holds a connection for this lane.
+
+    Fatal on a first connection -- it means a second client is running, which
+    is a mistake to report. Not fatal on a reconnection: a link that died
+    without a close frame looks alive to the core until its keepalive gives up,
+    so the client's own retry arrives while its dead socket still holds the lane.
+    """
+
+
 async def stream_lane(
     core_url: str,
     token: str,
@@ -53,6 +63,7 @@ async def stream_lane(
     source: AudioSource,
     *,
     client_name: str = CLIENT_NAME,
+    on_open: Callable[[], None] | None = None,
 ) -> int:
     """Open one lane and pump it until the source ends. Returns frames sent."""
     url = f"{core_url.rstrip('/')}/capture?token={token}"
@@ -67,8 +78,12 @@ async def stream_lane(
         reply = await connection.recv()
         acknowledged = _parse_ready(reply)
         if not acknowledged:
+            if _is_lane_busy(reply):
+                raise LaneBusy(f"core refused lane {lane!r}: {reply}")
             raise CaptureError(f"core refused lane {lane!r}: {reply}")
         log.info("lane %s open: %s", lane, source.description)
+        if on_open is not None:
+            on_open()
 
         # The source is a blocking iterator by design -- device backends read
         # from a pipe or a device. Pulling it on a worker thread keeps the event
@@ -139,19 +154,36 @@ async def stream_lane_forever(
 
     Reconnection is for transport failures only. A refused lane or a bad token
     is a configuration mistake, and retrying it forever would bury the message
-    that says so.
+    that says so. The one refusal that is retried is a busy lane *after* this
+    client has held it: that is its own dead connection, not someone else's.
     """
     total = 0
     delay = RECONNECT_DELAY_S
     attempts = 0
+    opened = False
+
+    def was_opened() -> None:
+        nonlocal opened, delay
+        opened = True
+        delay = RECONNECT_DELAY_S  # a lane that connected has earned a short retry
+
     while True:
         attempts += 1
         try:
             total += await stream_lane(
                 core_url, token, session_id, lane, source_factory(),
-                client_name=client_name,
+                client_name=client_name, on_open=was_opened,
             )
             return total
+        except LaneBusy as exc:
+            if not opened or (max_attempts is not None and attempts >= max_attempts):
+                raise
+            log.warning(
+                "lane %s still held by its previous connection (%s); retrying in %.0fs",
+                lane, exc, delay,
+            )
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, RECONNECT_MAX_S)
         except (OSError, websockets.exceptions.WebSocketException) as exc:
             if max_attempts is not None and attempts >= max_attempts:
                 raise
@@ -160,6 +192,15 @@ async def stream_lane_forever(
             )
             await asyncio.sleep(delay)
             delay = min(delay * 2, RECONNECT_MAX_S)
+
+
+def _is_lane_busy(reply: str | bytes) -> bool:
+    import json
+
+    try:
+        return json.loads(reply).get("code") == "lane_busy"
+    except (json.JSONDecodeError, AttributeError):
+        return False
 
 
 def _parse_ready(reply: str | bytes) -> bool:
