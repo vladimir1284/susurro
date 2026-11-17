@@ -18,6 +18,14 @@ What it measures, and why each one matters:
 ``decode_tokens_s``
     Sustained generation rate. Decides how long a hint takes to finish
     streaming, and therefore how long a hint is allowed to be.
+``d1_first_hint_ttft_*``
+    Time to first token of the *first* hint of a non-English, non-conversational
+    session, three ways: ``cold`` (no prefill), ``prefilled`` (the current
+    code) and ``legacy`` (a reconstruction of the pre-fix prefill, which warmed
+    the English conversational system prompt). If prefill works, ``prefilled``
+    is near ``warm_ttft_s`` and far below ``cold``; ``legacy`` should look like
+    ``cold``. This is also the direct test that ``max_tokens=0`` populates the
+    server's cache, which the code assumes and servers differ on (AUDIT.md D1).
 ``resident_memory_gb``
     Peak memory with both models loaded. Decides whether the 8B assumption
     holds.
@@ -44,6 +52,13 @@ import httpx
 
 from bench.metrics import Samples, machine, peak_rss_gb
 from bench.report import Report
+from core.llm.base import HintContext
+from core.llm.openai_compat import (
+    LAST_THING,
+    LAST_THING_MODES,
+    SYSTEM_PROMPTS,
+    OpenAICompatGenerator,
+)
 
 #: Roughly four characters per token for English prose. Crude, and enough: the
 #: point is to send a prompt of about the right size, not to count exactly.
@@ -61,6 +76,34 @@ def context_of(tokens: int) -> str:
     target = tokens * CHARS_PER_TOKEN
     repeats = max(1, target // len(FILLER) + 1)
     return (FILLER * repeats)[:target]
+
+
+def legacy_hint_payload(
+    model: str,
+    preamble: str,
+    transcript: tuple[str, ...],
+    language: str,
+    mode: str,
+) -> dict:
+    """The hint request as it was built before D1 was fixed (commit 8f430ff).
+
+    The mode's instruction sat in the system message, ahead of the preamble.
+    Kept only so the benchmark can show what the fix changed.
+    """
+    system = SYSTEM_PROMPTS.get((language, mode), SYSTEM_PROMPTS[("en", "conversational")])
+    body = "\n".join(transcript)
+    if mode in LAST_THING_MODES:
+        body += "\n\n" + LAST_THING.get(language, LAST_THING["en"])
+    return {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": f"{system}\n\n{preamble}"},
+            {"role": "user", "content": body},
+        ],
+        "max_tokens": 16,
+        "temperature": 0.0,
+        "stream": True,
+    }
 
 
 @dataclass
@@ -118,7 +161,82 @@ class LlmBench:
             raise RuntimeError("stream produced no content")
         return round(chunks / (time.perf_counter() - first), 2)
 
-    async def run(self, report: Report) -> None:
+    async def first_hint_ttft(
+        self, variant: str, index: int, language: str, mode: str
+    ) -> float:
+        """Seconds to the first token of the first hint of a fresh session.
+
+        A different preamble every time, for the reason the cold number uses a
+        different system prompt: a server remembering the last run would make
+        every variant look prefilled.
+        """
+        preamble = f"## BACKGROUND (d1 {variant} {index})\n" + context_of(2000)
+        transcript = ("them: " + context_of(100),)
+        context = HintContext(mode=mode, language=language, transcript=transcript)  # type: ignore[arg-type]
+        generator = OpenAICompatGenerator(
+            base_url=self.base_url, model=self.model, timeout_s=300.0
+        )
+        try:
+            if variant == "prefilled":
+                await generator.prefill(preamble, language)  # type: ignore[arg-type]
+                payload = None
+            elif variant == "legacy":
+                await generator.client().post(
+                    "/v1/chat/completions",
+                    json={
+                        "model": self.model,
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": SYSTEM_PROMPTS[("en", "conversational")]
+                                + "\n\n"
+                                + preamble,
+                            }
+                        ],
+                        "max_tokens": 0,
+                        "stream": False,
+                    },
+                )
+                payload = legacy_hint_payload(
+                    self.model, preamble, transcript, language, mode
+                )
+            elif variant == "cold":
+                payload = None
+                generator.preamble = preamble
+            else:
+                raise ValueError(f"unknown variant {variant!r}")
+
+            started = time.perf_counter()
+            if payload is None:
+                async for _chunk in generator.stream(context):
+                    return time.perf_counter() - started
+            else:
+                async with generator.client().stream(
+                    "POST", "/v1/chat/completions", json=payload
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if line.startswith("data:") and '"content"' in line:
+                            return time.perf_counter() - started
+            raise RuntimeError("stream produced no content")
+        finally:
+            await generator.aclose()
+
+    async def run_prefill_case(
+        self, report: Report, language: str = "es", mode: str = "business"
+    ) -> None:
+        for variant in ("cold", "prefilled", "legacy"):
+            samples = Samples(f"d1_first_hint_ttft_{variant}_s", "s")
+            for index in range(self.repeats):
+                samples.add(await self.first_hint_ttft(variant, index, language, mode))
+            report.llm[samples.name] = samples.summary()
+        report.notes.append(
+            f"d1 case: {language}/{mode} session. 'legacy' reconstructs the pre-fix "
+            "prefill (en/conversational system prompt) against the pre-fix hint "
+            "layout; it is not the current code."
+        )
+
+    async def run(self, report: Report, *, d1: bool = True) -> None:
         async with self.client() as client:
             for tokens in (1000, 4000):
                 samples = Samples(f"cold_prefill_{tokens}_s", "s")
@@ -142,6 +260,9 @@ class LlmBench:
             for _ in range(max(1, self.repeats // 2)):
                 rates.add(await self.decode_rate(client, static))
             report.llm["decode_tokens_s"] = rates.summary()
+
+        if d1:
+            await self.run_prefill_case(report)
 
 
 @dataclass
@@ -235,6 +356,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-llm", action="store_true")
     parser.add_argument("--skip-stt", action="store_true")
     parser.add_argument(
+        "--skip-d1",
+        action="store_true",
+        help="skip the first-hint-after-prefill case (about 15 extra requests)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="run the harness with invented numbers, to check the harness",
@@ -281,7 +407,7 @@ def main(argv: list[str] | None = None) -> int:
                         base_url=args.llm_url,
                         model=args.llm_model,
                         repeats=args.repeats,
-                    ).run(report)
+                    ).run(report, d1=not args.skip_d1)
                 )
             except (httpx.HTTPError, RuntimeError) as exc:
                 print(f"error: language model benchmark failed: {exc}", file=sys.stderr)

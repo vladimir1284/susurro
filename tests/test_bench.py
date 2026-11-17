@@ -15,7 +15,14 @@ import pytest
 
 from bench.metrics import Samples, machine, percentile
 from bench.report import GATES, Report
-from bench.run import CHARS_PER_TOKEN, LlmBench, build_parser, context_of, main
+from bench.run import (
+    CHARS_PER_TOKEN,
+    LlmBench,
+    build_parser,
+    context_of,
+    legacy_hint_payload,
+    main,
+)
 
 
 class TestPercentile:
@@ -242,3 +249,80 @@ class TestCli:
     def test_defaults_point_at_a_local_server(self) -> None:
         args = build_parser().parse_args([])
         assert args.llm_url.startswith("http://127.0.0.1")
+
+
+class TestFirstHintAfterPrefill:
+    """AUDIT.md D1: the case that tells whether the cache works at all."""
+
+    @pytest.fixture
+    def calls(self, monkeypatch: pytest.MonkeyPatch) -> list[dict]:
+        import bench.run as run_module
+
+        seen: list[dict] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            payload = json.loads(request.content)
+            seen.append(payload)
+            if payload.get("stream"):
+                return httpx.Response(
+                    200, content=b'data: {"choices":[{"delta":{"content":"x"}}]}\n\n'
+                )
+            return httpx.Response(200, json={"choices": []})
+
+        class Mocked(run_module.OpenAICompatGenerator):
+            def client(self) -> httpx.AsyncClient:
+                if self._client is None:
+                    self._client = httpx.AsyncClient(
+                        transport=httpx.MockTransport(handler),
+                        base_url="http://model.test",
+                    )
+                return self._client
+
+        monkeypatch.setattr(run_module, "OpenAICompatGenerator", Mocked)
+        return seen
+
+    @staticmethod
+    def bench() -> LlmBench:
+        return LlmBench(base_url="http://model.test", model="m", repeats=2)
+
+    async def test_each_variant_sends_what_its_name_says(self, calls: list[dict]) -> None:
+        report = Report(machine={})
+        await self.bench().run_prefill_case(report, "es", "business")
+        assert {
+            "d1_first_hint_ttft_cold_s",
+            "d1_first_hint_ttft_prefilled_s",
+            "d1_first_hint_ttft_legacy_s",
+        } <= set(report.llm)
+        # cold sends no zero-token request; prefilled and legacy send one per repeat.
+        assert len([c for c in calls if c.get("max_tokens") == 0]) == 4
+
+    async def test_every_run_has_its_own_preamble(self, calls: list[dict]) -> None:
+        # Otherwise a run would warm the next and every variant would look cached.
+        await self.bench().run_prefill_case(Report(machine={}), "es", "business")
+        markers = {
+            line
+            for call in calls
+            for line in call["messages"][0]["content"].splitlines()
+            if line.startswith("## BACKGROUND (d1")
+        }
+        assert len(markers) == 6  # 3 variants x 2 repeats
+
+    async def test_the_prefilled_variant_warms_the_system_message_the_hint_sends(
+        self, calls: list[dict]
+    ) -> None:
+        await self.bench().first_hint_ttft("prefilled", 0, "es", "business")
+        prefill, hint = calls
+        assert prefill["messages"][0] == hint["messages"][0]
+
+    async def test_the_legacy_variant_has_the_old_mismatch(self, calls: list[dict]) -> None:
+        await self.bench().first_hint_ttft("legacy", 0, "es", "business")
+        prefill, hint = calls
+        assert prefill["messages"][0] != hint["messages"][0]
+
+    def test_the_legacy_payload_keeps_the_mode_in_the_system_message(self) -> None:
+        from core.llm.openai_compat import SYSTEM_PROMPTS
+
+        payload = legacy_hint_payload("m", "PRE", ("them: hi",), "es", "business")
+        assert payload["messages"][0]["content"].startswith(
+            SYSTEM_PROMPTS[("es", "business")]
+        )

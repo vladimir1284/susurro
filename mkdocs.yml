@@ -81,6 +81,7 @@ plugins:
             Getting started: Primeros pasos
             Setup: Puesta en marcha
             Documentation: Documentación
+            M0 runbook: Runbook de M0
 
 nav:
   - Susurro: index.md
@@ -94,6 +95,7 @@ nav:
   - Hardware: hardware.md
   - Development:
       - Setup: development/setup.md
+      - M0 runbook: development/m0-runbook.md
       - Documentation: development/docs.md
 
 extra:
