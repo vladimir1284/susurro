@@ -540,3 +540,40 @@ class TestHintTextsAreKept:
             stats.observe(json.dumps(message))
         assert stats.records[0]["text"] == "- half"
         assert stats.records[0]["reason"] == "cancelled"
+
+
+class TestReplayStampsAudioTime:
+    """After D4 route_audio stamps frames with arrival time. In a replay the
+    feeder awaits recognition, so a slow recognizer delays the next call and the
+    delay leaks into the stamp: the lag it reports then shrinks (it came out
+    negative on the first overnight rounds). The replay must hand in audio time."""
+
+    async def test_every_frame_gets_its_place_in_the_recording(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import wave
+
+        import bench.replay_call as replay_module
+        from core.stt.fake import ScriptedRecognizer
+
+        for lane in ("mic", "far"):
+            with wave.open(str(tmp_path / f"{lane}.wav"), "wb") as handle:
+                handle.setnchannels(1)
+                handle.setsampwidth(2)
+                handle.setframerate(16000)
+                handle.writeframes(bytes(16000 * 2))  # one second
+        monkeypatch.setattr(replay_module, "build_detectors", lambda config: None)
+
+        seen: dict[str, list[int | None]] = {"mic": [], "far": []}
+        original = replay_module.Core.route_audio
+
+        async def spy(self, lane, pcm, timestamp_us=None):
+            seen[lane].append(timestamp_us)
+            await original(self, lane, pcm, timestamp_us)
+
+        monkeypatch.setattr(replay_module.Core, "route_audio", spy)
+        await replay_module.replay(
+            ScriptedRecognizer(script=[]), tmp_path, 0.0, 1.0
+        )
+        for lane in ("mic", "far"):
+            assert seen[lane] == [i * 20_000 for i in range(50)]

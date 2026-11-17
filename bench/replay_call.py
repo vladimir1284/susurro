@@ -202,7 +202,13 @@ async def replay(
             else:
                 result.worst_backlog_s[lane] = max(result.worst_backlog_s[lane], -wait)
             chunk = audio[lane][index * FRAME_BYTES : (index + 1) * FRAME_BYTES]
-            await core.route_audio(lane, chunk)  # type: ignore[arg-type]
+            # Audio time, not arrival time: this loop awaits recognition, so a
+            # slow recognizer delays the next call, and an arrival stamp would
+            # fold that delay into the segment's time and hide the very lag
+            # this tool exists to measure.
+            await core.route_audio(  # type: ignore[arg-type]
+                lane, chunk, index * FRAME_MS * 1000
+            )
 
     await asyncio.gather(feed("mic"), feed("far"))
     for lane in ("mic", "far"):
