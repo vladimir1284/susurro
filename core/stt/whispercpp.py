@@ -93,6 +93,10 @@ class WhisperCppRecognizer(WhisperRecognizer):
             for segment in response.json().get("segments", [])
             if not _ANNOTATION.match(segment["text"])
         ]
+        self._spans[lane] = [
+            (segment.get("start"), segment["end"], segment["text"].strip())
+            for segment in segments
+        ]
         text = " ".join(segment["text"].strip() for segment in segments).strip()
         window_s = len(self._lanes[lane].pcm) / 2 / SAMPLE_RATE
         ended = bool(segments) and (window_s - segments[-1]["end"]) >= self.silence_s

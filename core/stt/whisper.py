@@ -5,10 +5,13 @@ periodically. Two kinds of output come out, matching the interface: a partial
 every ``partial_interval_s`` while an utterance is open, and a final when the
 utterance closes.
 
-The window **overlaps rather than tiles**. Fixed independent chunks cut words at
-their boundaries, and Whisper-family models are confidently wrong on a chunk
-that holds only a fragment or only silence. Re-decoding an overlapping region
-means a word split across a boundary is still seen whole on the next pass.
+Each partial re-decodes the **whole open window**, so a word at the edge is seen
+whole on the next pass; the cost of a partial grows with the utterance, up to
+``max_window_s``, which is the ceiling on it. When an utterance runs past that
+ceiling without a pause, it is closed at the last phrase boundary the model
+found and the audio after it is carried into the next window, so a long speech
+is not cut through a word. Only if the whole window is one unbroken phrase is it
+cut where it stands.
 
 Not benchmarked. The machine this was written on is a two-core ARM container
 with no accelerator, where the tiny model runs far slower than real time and the
@@ -122,6 +125,11 @@ class WhisperRecognizer:
     #: does not flap on the threshold.
     _origin: dict[str, tuple[float, int]] = field(default_factory=dict, init=False)
     _shedding: dict[str, bool] = field(default_factory=dict, init=False)
+    #: Per lane, the phrases of the last decode as (start s, end s, text), for
+    #: cutting a window that ran out of room at a phrase boundary.
+    _spans: dict[str, list[tuple[float | None, float, str]]] = field(
+        default_factory=dict, init=False
+    )
 
     def __post_init__(self) -> None:
         self.reset()
@@ -171,6 +179,7 @@ class WhisperRecognizer:
         self._lanes = {"mic": _LaneBuffer(), "far": _LaneBuffer()}
         self._origin = {}
         self._shedding = {}
+        self._spans = {}
 
     def feed(self, lane: Lane, timestamp_us: int, pcm: bytes) -> list[Segment]:
         buffer = self._lanes[lane]
@@ -215,6 +224,10 @@ class WhisperRecognizer:
             initial_prompt=self.prompt or None,
         )
         segments = list(segments)
+        self._spans[lane] = [
+            (getattr(segment, "start", None), segment.end, segment.text.strip())
+            for segment in segments
+        ]
         text = " ".join(segment.text.strip() for segment in segments).strip()
         window_s = len(self._lanes[lane].pcm) / 2 / SAMPLE_RATE
         ended = bool(segments) and (window_s - segments[-1].end) >= self.silence_s
@@ -267,7 +280,55 @@ class WhisperRecognizer:
         if not text:
             self._reset_lane(lane)
             return []
+        if reason == "window full":
+            cut = self._phrase_cut(lane, text)
+            if cut is not None:
+                return self._close_at(lane, *cut)
         return self._close(lane, text)
+
+    def _phrase_cut(self, lane: Lane, text: str) -> tuple[str, float] | None:
+        """Where a full window can be closed without cutting a phrase, if anywhere.
+
+        The last phrase the model found is the one most likely to be unfinished
+        (a word, or a clause, still being said at the edge), so everything
+        before it is closed and it stays in the window to be decoded again with
+        what follows. ``None`` when there is no earlier phrase to close, or the
+        backend gave no start times.
+        """
+        spans = self._spans.get(lane, [])
+        if len(spans) < 2:
+            return None
+        start = spans[-1][0]
+        if start is None or start <= 0:
+            return None
+        head = " ".join(t for _s, _e, t in spans[:-1]).strip()
+        if not head or head == text or not plausible(head, start):
+            return None
+        return head, start
+
+    def _close_at(self, lane: Lane, text: str, cut_s: float) -> list[Segment]:
+        """Close the window up to ``cut_s`` and keep the rest for the next one."""
+        buffer = self._lanes[lane]
+        frame_bytes = FRAME_MS * SAMPLE_RATE // 1000 * 2
+        cut_frames = max(1, int(cut_s * 1000 / FRAME_MS))
+        cut_bytes = min(cut_frames * frame_bytes, len(buffer.pcm))
+        carried = bytes(buffer.pcm[cut_bytes:])
+        buffer.seq += 1
+        segment = Segment(
+            lane=lane,
+            text=text,
+            t=buffer.started_at_s,
+            final=True,
+            dur=cut_bytes / 2 / SAMPLE_RATE,
+            seq=buffer.seq,
+        )
+        self._lanes[lane] = _LaneBuffer(
+            pcm=bytearray(carried),
+            frames=len(carried) // frame_bytes,
+            started_at_s=buffer.started_at_s + cut_bytes / 2 / SAMPLE_RATE,
+            seq=buffer.seq,
+        )
+        return [segment]
 
     def _close(self, lane: Lane, text: str) -> list[Segment]:
         buffer = self._lanes[lane]
