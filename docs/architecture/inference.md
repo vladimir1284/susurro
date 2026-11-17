@@ -4,8 +4,8 @@
     The numbers on this page are derived from published hardware specifications and model
     sizes. [M0](../roadmap.md#m0-benchmark) has since measured part of them on the reference
     machine (time to first token, prefill, decode speed, speech speed, the effect of the
-    prefix prefill; see `bench/results/2026-11-17-awake.md`). Memory with both models loaded,
-    MLX and long calls are still estimates. If a measured number contradicts something here,
+    prefix prefill; see `bench/results/2026-11-17-awake.md`). Memory with both models loaded
+    (about 4.2 GB measured, far under the estimate) is measured; MLX and long calls are still estimates. If a measured number contradicts something here,
     the measurement wins and this page gets corrected.
 
 ## The binding constraint is memory

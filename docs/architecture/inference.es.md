@@ -5,8 +5,8 @@
     tamaños de modelo. [M0](../roadmap.md#m0-benchmark) ya midió una parte en la máquina de
     referencia (tiempo hasta el primer token, prefill, velocidad de decodificación, velocidad
     del reconocimiento de voz, efecto del prefill del prefijo; ver
-    `bench/results/2026-11-17-awake.md`). La memoria con ambos modelos cargados, MLX y las
-    llamadas largas siguen siendo estimaciones. Si una medición contradice algo de aquí, gana
+    `bench/results/2026-11-17-awake.md`). La memoria con ambos modelos cargados está medida
+    (unos 4.2 GB, muy por debajo de la estimación); MLX y las llamadas largas siguen siendo estimaciones. Si una medición contradice algo de aquí, gana
     la medición y esta página se corrige.
 
 ## La restricción que manda es la memoria
