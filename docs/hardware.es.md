@@ -23,6 +23,25 @@ latencia.
 
 **Cómodo:** 24 GB o más, lo que abre la clase 14B y deja margen real.
 
+### Mantén despierto el Mac mini
+
+**Un Mac mini inactivo se duerme y se despierta cada minuto más o menos**, y cada vez todo
+lo que corre en él se detiene unos 13 segundos: una petición en curso lo espera, así que
+las sugerencias y las líneas de transcripción llegan 15 segundos tarde. Ocurre siempre que
+nadie usa la máquina, que es el estado normal de un núcleo sin pantalla. En el Mac de
+referencia se midieron unos 60 ciclos de sueño y despertar por hora, a todas horas, y
+pararon por completo con `caffeinate -s` (también con `-dimsu`; `-i` solo no bastó). Para
+arreglarlo de forma permanente, una vez:
+
+```bash
+sudo pmset -a sleep 0
+```
+
+o activa «Evitar que el equipo entre en reposo automáticamente cuando la pantalla esté
+apagada» en Ajustes del Sistema. Como remedio sin `sudo`, ejecuta `caffeinate -s &` antes
+de una sesión. Comprueba con `pmset -g log | grep -c DarkWake`: no debería seguir creciendo
+mientras la máquina está inactiva.
+
 Susurro no es específico de CUDA. El núcleo habla con `llama.cpp` o con un extremo
 compatible con OpenAI, así que una máquina NVIDIA funciona; simplemente no es contra lo
 que se está diseñando y midiendo el proyecto.

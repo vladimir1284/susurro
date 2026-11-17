@@ -39,7 +39,7 @@ One clip of one voice; not the 30-minute case.
   and 15 s with gemma. These say nothing about contention: see the next section. Rounds 1
   and 2 are excluded (the replay hid its own lag then).
 
-## The Mac freezes for about 13 s once a minute
+## The Mac sleeps for about 13 s once a minute
 
 388 gaps of 14 to 40 s in a sampler that should write every 10 s, 5179 s in all over 8.5
 hours: **about 17% of the night the Mac did not run userland code.** A `time.sleep(1)` probe
@@ -47,10 +47,17 @@ overshot by 14.0 s and 12.0 s exactly one minute apart. This is the source of th
 stalls in every bench (the "slow outliers" in the report, 39 of them) and of the late
 finals in the replay. Ping loses 0.6% (123 of 21967), p99 214 ms, max 1035 ms.
 
-Cause not found. Untested suspects: the Stats menu-bar app (first among the busiest
-processes in 1778 of 2138 samples), Surfshark VPN, Wi-Fi scanning, Time Machine or
-Spotlight, a power or thermal policy. The decisive test quits Stats and Surfshark for ten
-minutes and reruns the probe; it touches the operator's apps, so it was not done.
+**Cause found the next morning: the Mac was sleeping.** `pmset -g log` shows "Maintenance
+Sleep" followed by "DarkWake" about every 70 s, 60 cycles an hour, around the clock
+whenever nobody used the machine (also all of 2026-11-16 from 11:00); a network packet
+wakes it. The sampler and the probe were simply stopped while it slept. It was not the
+Stats app (the probe saw no freeze with it closed or open), and `caffeinate -i`, which the
+night ran under, did not prevent it. Idle, with `caffeinate -dimsu` or with `caffeinate -s`
+alone, there were **no sleep cycles in 12 and 10 minutes**. The fix is a power setting:
+`sudo pmset -a sleep 0` (the Mac's `pmset` showed `sleep 1`), see
+[Hardware](../hardware.md). The night's numbers all include these sleeps; a rerun with the
+Mac kept awake is needed for clean stall-free numbers, and every earlier "15 s stall" in
+this project (including the first real call) most likely had this cause.
 
 ## What this says about M0
 
@@ -59,10 +66,10 @@ minutes and reruns the probe; it touches the operator's apps, so it was not done
   does not hold the first.
 - **Not shown:** memory with both models loaded (each measured alone), speech on more than
   one clip, MLX (not installed), hint quality, and anything about a 60-minute call.
-- **The gate as written ignores criterion 2 of the audit.** A machine that stops for 13 s
+- **The gate as written ignores criterion 2 of the audit.** A machine that sleeps for 13 s
   every minute passes it and still fails a real call: a hint requested at the wrong moment
-  arrives 13 s late, and the lag of finals reaches 15-25 s. Fix the machine before
-  choosing a model; no model choice changes this.
+  arrives 13 s late, and the lag of finals reaches 15-25 s. Keep it awake first (see
+  above); no model choice changes this.
 
 ## Other things the night found
 

@@ -18,6 +18,13 @@ an evening, so run each runtime at least twice, at different times, and keep bot
 - Optional, for the speech part: a 16 kHz mono WAV of real speech. See the note on speech
   below.
 
+## 0. Keep the Mac awake
+
+Before anything else: an idle Mac mini sleeps and wakes about once a minute and freezes for
+~13 s each time, which shows up as 15 s stalls in every number. Run `caffeinate -s &` on it
+(or set `sudo pmset -a sleep 0`); see [Hardware](../hardware.md). Check that
+`pmset -g log | grep -c DarkWake` does not grow while you wait.
+
 ## 1. llama.cpp
 
 ```bash

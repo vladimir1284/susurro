@@ -392,7 +392,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.no_setup:
         seconds = int(deadline - time.time()) + 120
-        driver.mac(f"nohup caffeinate -i -t {seconds} > /dev/null 2>&1 < /dev/null &", 20)
+        # -s, not -i: with only -i the Mac mini still slept and dark-woke about
+        # every 70 s (measured: 60 cycles an hour), freezing everything for ~13 s
+        # each time; -s ended it. It holds only on AC power, which a mini has.
+        driver.mac(f"nohup caffeinate -s -t {seconds} > /dev/null 2>&1 < /dev/null &", 20)
         sampler = args.out / "sampler.sh"
         sampler.write_text(SAMPLER, encoding="utf-8")
         subprocess.run(["scp", *SSH[1:], str(sampler), f"{MAC}:/tmp/susurro-sampler.sh"],

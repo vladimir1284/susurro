@@ -22,6 +22,23 @@ resident, and the reload cost per hint breaks the latency budget.
 
 **Comfortable:** 24 GB or more, which opens the 14B class and leaves real headroom.
 
+### Keep the Mac mini awake
+
+**An idle Mac mini sleeps and wakes about once a minute**, and every time it does,
+everything on it stops for roughly 13 seconds: a request in flight waits it out, so hints
+and transcript lines arrive 15 seconds late. It happens whenever nobody is using the
+machine, which is the normal state of a headless core. On the reference Mac it was
+measured at about 60 sleep/wake cycles an hour around the clock, and it stopped completely
+under `caffeinate -s` (also `-dimsu`; `-i` alone was not enough). To fix it for good, once:
+
+```bash
+sudo pmset -a sleep 0
+```
+
+or turn on "Prevent automatic sleeping when the display is off" in System Settings. As a
+stopgap without `sudo`, run `caffeinate -s &` before a session. Check with
+`pmset -g log | grep -c DarkWake`: it should not keep growing while the machine is idle.
+
 Susurro is not CUDA-specific. The core talks to `llama.cpp` or an OpenAI-compatible
 endpoint, so an NVIDIA box works; it is simply not what the project is being designed and
 measured against.

@@ -19,6 +19,13 @@ conserva ambos archivos.
 - Opcional, para la parte de voz: un WAV mono de 16 kHz con habla real. Ver la nota sobre
   voz más abajo.
 
+## 0. Mantén despierto el Mac
+
+Antes que nada: un Mac mini inactivo se duerme y despierta cada minuto más o menos y se
+congela ~13 s cada vez, lo que aparece como paradas de 15 s en todas las cifras. Ejecuta
+`caffeinate -s &` en él (o `sudo pmset -a sleep 0`); ver [Hardware](../hardware.md).
+Comprueba que `pmset -g log | grep -c DarkWake` no crece mientras esperas.
+
 ## 1. llama.cpp
 
 ```bash
