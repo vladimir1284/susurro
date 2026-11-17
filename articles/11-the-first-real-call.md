@@ -60,6 +60,11 @@ After the fixes, replayed at real time, finals arrived 1.2 seconds late on avera
 with no dropped lanes. With 1.2 s of extra delay added to every request, to imitate the server on
 a bad hour, that became 6 and 10 seconds. It degrades; it does not collapse.
 
+*Update, a day later: the "bad hours" I was imitating were real, and not the server's fault. The Mac
+mini was going to sleep for about 13 seconds every minute. With that fixed, the same replay with
+real hints running gave finals 0.8 seconds late on average and 1.8 at worst, and no stalls.
+The next article has the story.*
+
 I also tried the bigger Whisper model, expecting it to win. On this call it did not: better on one lane,
 worse on the other by a few words, missing two key terms, and three times slower. That
 says "not worth it here", not "never". A faster engine, Parakeet, lost too, for a less obvious reason: the next article.
