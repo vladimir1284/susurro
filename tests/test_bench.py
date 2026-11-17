@@ -393,3 +393,74 @@ class TestColdMeansColdAcrossRuns:
         a = LlmBench(base_url="http://x", model="m")
         b = LlmBench(base_url="http://x", model="m")
         assert a.d1_preamble("cold", 0) != b.d1_preamble("cold", 0)
+
+
+class TestWhisperCppProbe:
+    """The speech half of M0 on a machine whose faster-whisper weights are not
+    installed: time the whisper.cpp server on a fixed clip of real speech."""
+
+    @staticmethod
+    def clip(tmp_path: Path, seconds: float = 2.0) -> Path:
+        import wave
+
+        path = tmp_path / "clip.wav"
+        with wave.open(str(path), "wb") as handle:
+            handle.setnchannels(1)
+            handle.setsampwidth(2)
+            handle.setframerate(16000)
+            handle.writeframes(b"\x01\x00" * int(16000 * seconds))
+        return path
+
+    def test_it_reports_compute_seconds_per_audio_second(self, tmp_path: Path) -> None:
+        from bench.run import WhisperCppBench
+
+        calls = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request.url.path)
+            return httpx.Response(200, json={"text": "hola", "segments": []})
+
+        report = Report(machine={})
+        bench = WhisperCppBench(
+            audio=self.clip(tmp_path, 2.0),
+            url="http://stt.test",
+            language="es",
+            repeats=3,
+            transport=httpx.MockTransport(handler),
+        )
+        bench.run(report)
+        assert calls == ["/inference"] * 4  # one warm-up the report does not count
+        assert report.stt["stt_realtime_factor"]["n"] == 3
+        assert report.stt["audio_seconds"] == 2.0
+        assert report.stt["backend"] == "whisper.cpp server"
+
+    def test_a_server_error_is_raised_not_recorded(self, tmp_path: Path) -> None:
+        from bench.run import WhisperCppBench
+
+        bench = WhisperCppBench(
+            audio=self.clip(tmp_path),
+            url="http://stt.test",
+            transport=httpx.MockTransport(lambda r: httpx.Response(503)),
+        )
+        with pytest.raises(httpx.HTTPError):
+            bench.run(Report(machine={}))
+
+    def test_the_cli_uses_it_when_given_a_url(self, tmp_path: Path, monkeypatch) -> None:
+        import bench.run as run_module
+
+        seen = {}
+
+        class Fake:
+            def __init__(self, **kwargs) -> None:
+                seen.update(kwargs)
+
+            def run(self, report) -> None:
+                report.stt["stt_realtime_factor"] = {"median": 0.1, "n": 1}
+
+        monkeypatch.setattr(run_module, "WhisperCppBench", Fake)
+        out = tmp_path / "r.json"
+        main(["--skip-llm", "--audio", str(self.clip(tmp_path)),
+              "--stt-url", "http://stt.test", "--stt-language", "es", "--out", str(out)])
+        assert seen["url"] == "http://stt.test"
+        assert seen["language"] == "es"
+        assert json.loads(out.read_text())["gates"]["stt_realtime_factor"]["value"] == 0.1

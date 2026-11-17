@@ -316,6 +316,52 @@ class SttBench:
             )
 
 
+@dataclass
+class WhisperCppBench:
+    """Speech speed through a whisper.cpp server, on a fixed clip of real speech.
+
+    ``SttBench`` needs faster-whisper's weights on this machine; the Mac mini
+    runs whisper.cpp instead and they are not there. This times what the core
+    actually calls: ``POST /inference`` with a WAV. One warm-up request is made
+    and not counted, so a model still paging in does not read as slow.
+    """
+
+    audio: Path
+    url: str
+    language: str = "es"
+    repeats: int = 5
+    transport: httpx.BaseTransport | None = None
+
+    def run(self, report: Report) -> None:
+        import wave
+
+        with wave.open(str(self.audio), "rb") as handle:
+            seconds = handle.getnframes() / handle.getframerate()
+        payload = self.audio.read_bytes()
+        samples = Samples("stt_realtime_factor", "x")
+        with httpx.Client(
+            base_url=self.url.rstrip("/"), timeout=120.0, transport=self.transport
+        ) as client:
+            for index in range(self.repeats + 1):
+                started = time.perf_counter()
+                response = client.post(
+                    "/inference",
+                    files={"file": ("clip.wav", payload, "audio/wav")},
+                    data={
+                        "response_format": "verbose_json",
+                        "language": self.language,
+                        "temperature": "0.0",
+                    },
+                )
+                response.raise_for_status()
+                if index:
+                    samples.add((time.perf_counter() - started) / seconds)
+        report.stt["stt_realtime_factor"] = samples.summary()
+        report.stt["audio_seconds"] = round(seconds, 1)
+        report.stt["backend"] = "whisper.cpp server"
+        report.stt["url"] = self.url
+
+
 def dry_run(report: Report) -> None:
     """Exercise the harness without any model.
 
@@ -356,6 +402,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--llm-model", default="local")
     parser.add_argument("--audio", type=Path, help="16 kHz mono WAV of real speech")
+    parser.add_argument(
+        "--stt-url",
+        help="measure speech through a whisper.cpp server at this URL instead of "
+        "loading faster-whisper here; --audio is the clip sent to it",
+    )
     parser.add_argument("--stt-model", default="large-v3-turbo")
     parser.add_argument("--stt-language", default="en")
     parser.add_argument("--compute-type", default="int8")
@@ -430,12 +481,24 @@ def main(argv: list[str] | None = None) -> int:
                     file=sys.stderr,
                 )
                 return 2
-            SttBench(
-                audio=args.audio,
-                model=args.stt_model,
-                language=args.stt_language,
-                compute_type=args.compute_type,
-            ).run(report)
+            if args.stt_url:
+                try:
+                    WhisperCppBench(
+                        audio=args.audio,
+                        url=args.stt_url,
+                        language=args.stt_language,
+                        repeats=args.repeats,
+                    ).run(report)
+                except httpx.HTTPError as exc:
+                    print(f"error: speech benchmark failed: {exc}", file=sys.stderr)
+                    return 3
+            else:
+                SttBench(
+                    audio=args.audio,
+                    model=args.stt_model,
+                    language=args.stt_language,
+                    compute_type=args.compute_type,
+                ).run(report)
 
         if not args.skip_llm:
             try:
