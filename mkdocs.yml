@@ -82,6 +82,7 @@ plugins:
             Setup: Puesta en marcha
             Documentation: Documentación
             M0 runbook: Runbook de M0
+            Recording protocol: Protocolo de grabación
 
 nav:
   - Susurro: index.md
@@ -96,6 +97,7 @@ nav:
   - Development:
       - Setup: development/setup.md
       - M0 runbook: development/m0-runbook.md
+      - Recording protocol: development/recording-protocol.md
       - Documentation: development/docs.md
 
 extra:
