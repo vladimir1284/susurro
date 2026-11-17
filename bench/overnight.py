@@ -73,6 +73,18 @@ def deadline_after(now: datetime, hour: int, minute: int) -> datetime:
     return target if target > now else target + timedelta(days=1)
 
 
+def next_round_wait(now: float, started: float, interval_s: float, deadline: float) -> float | None:
+    """Seconds to sleep before the next round, or None when no round fits.
+
+    A round slot is ``started + interval_s``; it needs 600 s of margin before the
+    deadline. A round that overran its slot starts the next one at once.
+    """
+    slot = started + interval_s
+    if slot + 600 >= deadline:
+        return None
+    return max(0.0, slot - now)
+
+
 def can_start(now: float, deadline: float, step: str) -> bool:
     return now + BUDGET[step] < deadline
 
@@ -348,12 +360,13 @@ class Driver:
             round_no += 1
             started = time.time()
             self.one_round(round_no)
-            wait = started + self.interval_s - time.time()
-            if wait > 0 and time.time() + wait + 600 < self.deadline:
+            wait = next_round_wait(time.time(), started, self.interval_s, self.deadline)
+            if wait is None:
+                self.say(f"round {round_no} done; the next slot leaves no time, stopping")
+                break
+            if wait > 0:
                 self.say(f"round {round_no} done; waiting {wait / 60:.0f} min")
                 time.sleep(wait)
-            elif time.time() + 600 >= self.deadline:
-                break
         self.say(f"finished after {round_no} rounds; mac_failures={self.mac_failures}")
         return 0
 
