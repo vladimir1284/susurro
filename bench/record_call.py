@@ -340,9 +340,9 @@ def main(argv: list[str] | None = None) -> int:
         input("\nLevel check: 4 s. Talk, and have the far side talk or play audio. Enter to start. ")
         pm, pf = level_check(mic_dev, far_dev)
         print(f"  mic peak {pm:.0f} dBFS, far peak {pf:.0f} dBFS (aim for about -12; below -40 is wrong)")
-        if pm < -50 or pf < -50:
-            if input("  A lane is nearly silent. Continue anyway? [y/N] ").strip().lower() != "y":
-                return 1
+        quiet = pm < -50 or pf < -50
+        if quiet and input("  A lane is nearly silent. Continue anyway? [y/N] ").strip().lower() != "y":
+            return 1
 
     input("\nEnter to START recording. ")
     folder.mkdir(parents=True)
