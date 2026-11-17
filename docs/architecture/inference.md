@@ -67,7 +67,13 @@ cost. Concretely:
 - Transcript lines are appended, never edited — which is why only
   `transcript.final` enters the context, never `transcript.partial`.
 - Context overflow is handled by starting a new cache branch at a segment boundary, not
-  by rewriting history in place.
+  by rewriting history in place. Concretely: a hint carries a window of whole transcript
+  lines, at most `[llm] transcript_budget_chars` characters (default 12000, about 3k
+  tokens; a conservative figure not yet tuned against M0). The window holds still while
+  the transcript fits. When it does not, it jumps forward to keep about half the budget:
+  one cache miss, then a long quiet stretch, rather than a shifting prompt start that
+  would discard the cache on every hint. The preamble is never in the window, so there is
+  nothing to re-prefill.
 
 Both candidate runtimes support this:
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import hmac
 import logging
 import time
@@ -112,6 +113,9 @@ class Core:
     #: Recorded sessions. Disabled unless configured, because a tool that
     #: writes every conversation to disk unasked is not one to trust.
     history: HistoryStore | None = None
+    #: Most characters of transcript a hint carries (about 3k tokens). Past it the
+    #: window moves forward; see ``hint_window``. 0 sends everything.
+    transcript_budget_chars: int = 12000
     #: Monotonic seconds. Injectable so tests can move time without sleeping.
     clock: Callable[[], float] = time.monotonic
 
@@ -140,6 +144,15 @@ class Core:
     #: was started against a model server that was not running.
     _llm_status: str = field(default="unknown", init=False)
     _hint_text: dict[str, str] = field(default_factory=dict, init=False)
+    #: Finals of the live session, kept so a console that reconnects can be
+    #: given them again, and the mode of the hint in flight for the same reason.
+    _finals: list[Segment] = field(default_factory=list, init=False)
+    _hint_mode: str | None = field(default=None, init=False)
+    #: First transcript line a hint carries. See ``hint_window``.
+    _window_start: int = field(default=0, init=False)
+    #: Checkpoints are written one at a time, so an older snapshot cannot land
+    #: after a newer one.
+    _checkpoint_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
     #: Per lane: frames held back while nobody is speaking, and how many frames
     #: the lane has delivered. See ``route_audio``.
     _preroll: dict[str, deque[tuple[int, bytes]]] = field(default_factory=dict, init=False)
@@ -211,6 +224,60 @@ class Core:
             llm=self._llm_status,
             lanes=dict(self.state.lanes),
         )
+
+    # -- long calls ------------------------------------------------------------ #
+
+    def hint_window(self) -> tuple[str, ...]:
+        """The transcript lines a hint carries.
+
+        Every hint used to send the whole transcript, so an hour-long call would
+        outgrow the model's context. The window is a suffix of whole lines.
+        It holds still while the transcript fits the budget, so the prompt keeps
+        the same start and the server's prefix cache survives from hint to
+        hint. When the budget is exceeded it jumps forward to keep about half of
+        it: one cache miss, then a long quiet stretch. Trimming a little on
+        every hint would move the start of the prompt each time and make the
+        cache useless. The last line is always kept, however long.
+        """
+        lines = self.transcript
+        if not lines:
+            return ()
+        budget = self.transcript_budget_chars
+        start = min(self._window_start, len(lines) - 1)
+        if budget > 0 and sum(len(line) + 1 for line in lines[start:]) > budget:
+            kept, new = 0, len(lines)
+            while new > 0 and kept + len(lines[new - 1]) + 1 <= budget // 2:
+                kept += len(lines[new - 1]) + 1
+                new -= 1
+            start = max(start, min(new, len(lines) - 1))
+            log.info("transcript window moved to line %d of %d", start, len(lines))
+        self._window_start = start
+        return tuple(lines[start:])
+
+    def reset_hint_window(self) -> None:
+        self._window_start = 0
+
+    async def checkpoint(self) -> None:
+        """Write the recording as it stands.
+
+        It used to be written only by session.stop, so a crash, a Ctrl-C or a
+        power cut lost the whole call. A snapshot goes to the same file every
+        time (atomically), so an interrupted call leaves everything up to the
+        last final or hint, and stopping later still leaves one file.
+        """
+        recording = self._recording
+        if recording is None or self.history is None or not self.history.enabled:
+            return
+        if not recording.lines and not recording.hints:
+            return
+        snapshot = dataclasses.replace(
+            recording, lines=list(recording.lines), hints=list(recording.hints)
+        )
+        async with self._checkpoint_lock:
+            try:
+                await asyncio.to_thread(self.history.save, snapshot)
+            except (HistoryError, OSError):
+                log.warning("could not checkpoint the session recording", exc_info=True)
 
     # -- capture endpoint ---------------------------------------------------- #
 
@@ -319,9 +386,10 @@ class Core:
         and a burst of frames does not squeeze audio into less time than it
         lasts.
         """
+        moment = self.clock()
         if self._session_t0 is None:
-            self._session_t0 = self.clock()
-        arrived_us = int((self.clock() - self._session_t0) * 1_000_000)
+            self._session_t0 = moment
+        arrived_us = int((moment - self._session_t0) * 1_000_000)
         previous = self._lane_clock_us.get(lane)
         stamp = arrived_us if previous is None else max(previous + FRAME_US, arrived_us)
         self._lane_clock_us[lane] = stamp
@@ -422,6 +490,7 @@ class Core:
             # append-only so the prefix cache survives between hints.
             speaker = "them" if segment.lane == "far" else "me"
             self.transcript.append(f"{speaker}: {segment.text}")
+            self._finals.append(segment)
             if self._recording is not None:
                 self._recording.lines.append(
                     Line(
@@ -437,6 +506,7 @@ class Core:
                     segment.lane, segment.text, segment.t, segment.dur, segment.seq
                 )
             )
+            await self.checkpoint()
         else:
             await self.broadcast(
                 p.transcript_partial(segment.lane, segment.text, segment.t)
@@ -450,8 +520,30 @@ class Core:
             return
 
         self.consoles.add(connection)
+        # Snapshot before the first await: whatever is broadcast from here on
+        # reaches this console by itself.
+        finals = list(self._finals)
+        live_hint = self.state.active_hint
+        hint_text = self._hint_text.get(live_hint, "") if live_hint else ""
         await connection.send(self.profiles_event())
         await connection.send(self.state_event())
+        if self.state.phase is SessionPhase.LIVE:
+            # A phone whose screen locked mid-call used to come back blank.
+            for segment in finals:
+                await connection.send(
+                    p.transcript_final(
+                        segment.lane, segment.text, segment.t, segment.dur, segment.seq
+                    )
+                )
+            if live_hint:
+                await connection.send(
+                    p.hint_start(
+                        live_hint, self._hint_trigger or "manual",  # type: ignore[arg-type]
+                        self._hint_mode or "conversational",  # type: ignore[arg-type]
+                    )
+                )
+                if hint_text:
+                    await connection.send(p.hint_delta(live_hint, hint_text))
         try:
             async for message in connection:
                 try:
@@ -509,8 +601,10 @@ class Core:
                     # (it kept streaming and holding the model after stop).
                     await self.cancel_hint()
                     self.state.stop()
-                    self.finish_recording()
+                    await self.finish_recording()
                     self.transcript.clear()
+                    self._finals.clear()
+                    self.reset_hint_window()
                 case p.HintRequest(mode=mode):
                     await self.request_hint(mode)
                     return
@@ -549,7 +643,7 @@ class Core:
             )
         )
 
-    def finish_recording(self) -> None:
+    async def finish_recording(self) -> None:
         """Write the session out, if one was being recorded.
 
         A failure here is logged and swallowed. Losing a transcript is
@@ -565,7 +659,8 @@ class Core:
             return
         recording.ended_at = now()
         try:
-            path = self.history.save(recording)
+            async with self._checkpoint_lock:
+                path = await asyncio.to_thread(self.history.save, recording)
             log.info("recorded session to %s", path)
         except (HistoryError, OSError):
             log.exception("could not write the session recording")
@@ -646,6 +741,8 @@ class Core:
                 started_at=now(),
             )
         self.transcript.clear()
+        self._finals.clear()
+        self.reset_hint_window()
         self.recognizer.reset()
         self.decoder.reset()
         for detector in (self.detectors or {}).values():
@@ -722,6 +819,7 @@ class Core:
     async def start_hint(self, mode: str, trigger: str) -> None:
         hint_id = self.state.begin_hint()
         self._hint_trigger = trigger
+        self._hint_mode = mode
         # The clock starts when the hint is asked for, not when the request
         # reaches the model. Scheduling and prompt assembly are latency the
         # user waits through too.
@@ -733,7 +831,7 @@ class Core:
         context = HintContext(
             mode=mode,  # type: ignore[arg-type]
             language=self.state.language or "en",
-            transcript=tuple(self.transcript),
+            transcript=self.hint_window(),
         )
         tokens = 0
         started = self._hint_started.get(hint_id, time.perf_counter())
@@ -782,6 +880,7 @@ class Core:
                 hint_id, mode, "error", tokens=tokens,
                 ttft_ms=self._hint_ttft.get(hint_id),
             )
+            await self.checkpoint()
             self._hint_trigger = None
             await self.broadcast(p.hint_end(hint_id, "error"))
             await self.broadcast(p.error("hint_failed", str(exc)))
@@ -790,6 +889,7 @@ class Core:
             self._llm_status = "ready"
             ttft_ms = self._hint_ttft.get(hint_id)
             self.record_hint(hint_id, mode, "complete", tokens=tokens, ttft_ms=ttft_ms)
+            await self.checkpoint()
             self._hint_trigger = None
             await self.broadcast(
                 p.hint_end(hint_id, "complete", tokens=tokens, ttft_ms=ttft_ms)
@@ -827,6 +927,7 @@ class Core:
             "cancelled",
             ttft_ms=ttft_ms,
         )
+        await self.checkpoint()
         self._hint_trigger = None
         await self.broadcast(p.hint_end(active, "cancelled", ttft_ms=ttft_ms))
 

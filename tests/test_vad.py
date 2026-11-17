@@ -527,4 +527,8 @@ class TestVoiceGatesRecognition:
         )
         for _ in range(10):
             await plain.route_audio("far", quiet(20))
-        assert [ts for _lane, ts in recognizer.fed] == [i * 20_000 for i in range(10)]
+        stamps = [ts for _lane, ts in recognizer.fed]
+        assert len(stamps) == 10
+        # Arrival-stamped on the session timeline: never closer than one frame.
+        assert all(b - a >= 20_000 for a, b in zip(stamps, stamps[1:], strict=False))
+        assert stamps[0] == 0

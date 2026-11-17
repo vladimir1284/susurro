@@ -58,3 +58,7 @@ backend = "openai"
 base_url = "http://127.0.0.1:8080"
 model = "local"
 temperature = 0.3
+# Most characters of transcript one hint carries (about 3k tokens). A longer call
+# moves the window forward in one jump instead of outgrowing the model's context.
+# Conservative and untuned: M0 should set it. 0 sends the whole transcript.
+transcript_budget_chars = 12000

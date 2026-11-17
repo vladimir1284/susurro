@@ -128,6 +128,11 @@ de él bajo demanda en lugar de guardar una segunda copia, y `session.delete` lo
 borrar tiene que ser tan fácil como grabar. Una sesión vacía no se escribe, así que un
 arranque accidental no entierra las que importan.
 
+El fichero se escribe mientras transcurre la llamada, no solo al pararla: tras cada línea
+final y cada sugerencia terminada el núcleo lo reescribe de forma atómica, así que una
+caída, un Ctrl-C o un corte de luz dejan todo hasta la última de ellas. Una sesión
+interrumpida no tiene `ended_at`. No se escribe nada si la grabación no está activada.
+
 Una sugerencia cancelada también se graba. Después resulta útil ver qué estaba a punto de
 decir y si abandonarla fue lo correcto.
 
@@ -161,6 +166,13 @@ A una consola se la saluda con `profiles` antes que con `state`, para que pueda 
 elección en lugar de exigir que el identificador se sepa de antemano. `profiles.request`
 vuelve a pedir el listado. Un perfil cuyo fichero no se puede leer se deja fuera y se
 registra: un fichero malo no debe dejar la consola con un selector vacío.
+
+A una consola que se conecta mientras hay una sesión en vivo se le envía además esa sesión
+hasta ahora: cada `transcript.final` en orden y, si se está escribiendo una sugerencia, su
+`hint.start` y un único `hint.delta` con el texto escrito hasta el momento. Un teléfono
+cuya pantalla se bloqueó a mitad de la llamada vuelve con la conversación en lugar de una
+página en blanco. Los parciales no se reenvían. Un evento emitido justo entre la conexión y
+la repetición puede llegar dos veces.
 
 `session.config` debe llegar antes de `session.start`, porque determina el preámbulo
 estático que se prefillea en la

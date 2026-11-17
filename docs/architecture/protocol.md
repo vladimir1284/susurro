@@ -125,6 +125,11 @@ demand rather than storing a second copy, and `session.delete` removes it: delet
 be as easy as recording. An empty session is not written at all, so an accidental start
 does not bury the ones that matter.
 
+The file is written as the call goes, not only when it stops: after every final line and
+every ended hint the core rewrites it atomically, so a crash, a Ctrl-C or a power cut
+leaves everything up to the last of those. A session that was cut short has no `ended_at`.
+Nothing is written at all unless recording is on.
+
 A cancelled hint is recorded too. Afterwards it is useful to see what the thing was about
 to say and whether abandoning it was right.
 
@@ -157,6 +162,12 @@ A console is greeted with `profiles` before `state`, so it can offer a choice ra
 requiring the id to be known in advance. `profiles.request` asks for the listing again. A
 profile whose file is unreadable is left out and logged: one bad file must not leave the
 console with an empty picker.
+
+A console that connects while a session is live is also sent that session so far: every
+`transcript.final` in order, then, if a hint is being written, its `hint.start` and one
+`hint.delta` carrying the text written up to now. A phone whose screen locked mid-call
+comes back with the conversation instead of a blank page. Partials are not replayed. An
+event broadcast in the instant between connecting and the replay can arrive twice.
 
 `session.config` must arrive before `session.start`, because it determines the static
 preamble that gets prefilled into the

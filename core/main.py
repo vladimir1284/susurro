@@ -170,6 +170,9 @@ def main(argv: list[str] | None = None) -> int:
         detectors=build_detectors(config.get("vad", {})),
         bleed=build_bleed(config.get("vad", {})),
         history=build_history(config.get("session", {})),
+        transcript_budget_chars=int(
+            config.get("llm", {}).get("transcript_budget_chars", 12000)
+        ),
     )
 
     url = f"http://{settings['host']}:{settings['port']}/?token={token}"

@@ -70,7 +70,14 @@ completo de prefill. En concreto:
 - Las líneas de transcripción se anexan, nunca se editan — por eso solo entra
   `transcript.final` en el contexto, nunca `transcript.partial`.
 - El desbordamiento de contexto se maneja abriendo una rama nueva de caché en una frontera
-  de segmento, no reescribiendo el historial en su sitio.
+  de segmento, no reescribiendo el historial en su sitio. En concreto: una sugerencia lleva
+  una ventana de líneas enteras de la transcripción, de como mucho
+  `[llm] transcript_budget_chars` caracteres (12000 por defecto, unos 3k tokens; una cifra
+  conservadora aún sin ajustar con M0). La ventana se queda quieta mientras la transcripción
+  cabe. Cuando no cabe, salta hacia delante para conservar como la mitad del presupuesto: un
+  fallo de caché y luego un largo tramo tranquilo, en lugar de un inicio de prompt que se
+  mueve y descarta la caché en cada sugerencia. El preámbulo nunca está en la ventana, así
+  que no hay nada que volver a prefillar.
 
 Ambos runtimes candidatos lo soportan:
 

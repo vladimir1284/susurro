@@ -1606,3 +1606,180 @@ class TestLanesShareOneSessionTimeline:
             await core.route_audio("far", self.frame())
         assert model.calls - before >= 25
         assert whisper.lag_s("far", core._lane_clock_us["far"]) < 1.0
+
+
+class TestALongCall:
+    """D7, D9 and D10 of AUDIT.md: what an hour-long call needs that a
+    two-minute one does not."""
+
+    @staticmethod
+    def final(lane: str, text: str, t: float, seq: int) -> Segment:
+        return Segment(lane=lane, text=text, t=t, final=True, dur=1.0, seq=seq)
+
+    # D9 ------------------------------------------------------------------ #
+
+    async def test_a_recording_reaches_the_disk_before_the_session_stops(
+        self, url: str, core: Core, tmp_path: Path
+    ) -> None:
+        # A crash, Ctrl-C or power cut used to lose the whole session: the file
+        # was written only by session.stop.
+        core.history = HistoryStore(tmp_path, enabled=True)
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await core.emit_segment(self.final("far", "so tell me about it", 1.0, 1))
+
+        saved = core.history.list_sessions()
+        assert len(saved) == 1
+        recording = core.history.load(saved[0]["session_id"])
+        assert [line.text for line in recording.lines] == ["so tell me about it"]
+        assert recording.ended_at is None  # not stopped: honest about it
+        await console.close()
+
+    async def test_a_hint_is_checkpointed_when_it_ends(
+        self, url: str, core: Core, tmp_path: Path
+    ) -> None:
+        core.history = HistoryStore(tmp_path, enabled=True)
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        core.transcript.append("them: q")
+        await console.send(json.dumps({"type": "hint.request", "mode": "conversational"}))
+        await drain(console, "hint.end")
+        recording = core.history.load(core.history.list_sessions()[0]["session_id"])
+        assert len(recording.hints) == 1
+        await console.close()
+
+    async def test_stop_still_closes_the_recording(
+        self, url: str, core: Core, tmp_path: Path
+    ) -> None:
+        core.history = HistoryStore(tmp_path, enabled=True)
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await core.emit_segment(self.final("far", "hello", 1.0, 1))
+        await console.send(json.dumps({"type": "session.stop"}))
+        await await_phase(console, "configured")
+        recording = core.history.load(core.history.list_sessions()[0]["session_id"])
+        assert recording.ended_at is not None
+        assert len(core.history.list_sessions()) == 1  # one file, not two
+        await console.close()
+
+    # D10 ----------------------------------------------------------------- #
+
+    async def test_a_console_that_reconnects_gets_the_transcript_back(
+        self, url: str, core: Core
+    ) -> None:
+        first = await open_console(url)
+        await go_live(first, "en-technical-backend", "en", "conversational")
+        await core.emit_segment(self.final("far", "one", 1.0, 1))
+        await core.emit_segment(self.final("mic", "two", 2.0, 1))
+        await first.close()  # the phone's screen locked
+
+        second = await websockets.connect(f"{url}/console?token={TOKEN}")
+        seen = []
+        for _ in range(12):
+            event = await recv_json(second)
+            seen.append(event)
+            if sum(e["type"] == "transcript.final" for e in seen) == 2:
+                break
+        finals = [e for e in seen if e["type"] == "transcript.final"]
+        assert [e["text"] for e in finals] == ["one", "two"]
+        assert [e["lane"] for e in finals] == ["far", "mic"]
+        await second.close()
+
+    async def test_a_console_that_reconnects_gets_the_hint_in_flight(
+        self, url: str, core: Core
+    ) -> None:
+        core.generator.chunk_delay_s = 0.2
+        first = await open_console(url)
+        await go_live(first, "en-technical-backend", "en", "conversational")
+        await first.send(json.dumps({"type": "hint.request", "mode": "conversational"}))
+        started = await drain(first, "hint.start")
+        await drain(first, "hint.delta")
+        await first.close()
+
+        second = await websockets.connect(f"{url}/console?token={TOKEN}")
+        start = await drain(second, "hint.start")
+        assert start["hint_id"] == started["hint_id"]
+        delta = await drain(second, "hint.delta")
+        assert delta["hint_id"] == started["hint_id"]
+        assert delta["text"]  # what was written so far, in one piece
+        assert (await drain(second, "hint.end"))["reason"] == "complete"
+        await second.close()
+
+    async def test_a_console_before_any_session_gets_no_transcript(
+        self, url: str, core: Core
+    ) -> None:
+        console = await open_console(url)
+        await console.send(json.dumps({"type": "profiles.request"}))
+        event = await drain(console, "profiles")
+        assert event["type"] == "profiles"
+        await console.close()
+
+    # D7 ------------------------------------------------------------------ #
+
+    def window_core(self, budget: int) -> Core:
+        core = Core(
+            profiles=ProfileStore(FIXTURES),
+            recognizer=ScriptedRecognizer(script=[]),
+            generator=CannedHintGenerator(),
+            token=TOKEN,
+            transcript_budget_chars=budget,
+        )
+        return core
+
+    def test_a_short_call_sends_everything(self) -> None:
+        core = self.window_core(1000)
+        core.transcript.extend(["them: a", "me: b"])
+        assert core.hint_window() == ("them: a", "me: b")
+
+    def test_the_window_is_always_a_suffix_that_keeps_the_last_line(self) -> None:
+        core = self.window_core(200)
+        for index in range(100):
+            core.transcript.append(f"them: line number {index} with some words")
+            window = core.hint_window()
+            assert window[-1] == core.transcript[-1]
+            assert core.transcript[-len(window):] == list(window)
+            assert sum(len(line) + 1 for line in window) <= 200 or len(window) == 1
+
+    def test_the_window_moves_rarely_so_the_cache_survives_between_hints(self) -> None:
+        # Trimming on every hint would move the start of the prompt each time
+        # and throw the prefix cache away. It trims once, to half the budget,
+        # then holds still until the budget is exceeded again.
+        core = self.window_core(400)
+        starts = []
+        for index in range(60):
+            core.transcript.append(f"them: line number {index} with some words")
+            starts.append(len(core.transcript) - len(core.hint_window()))
+        moves = sum(1 for a, b in zip(starts, starts[1:], strict=False) if b != a)
+        # About one move per half-budget of new lines (~5 here), not one per hint.
+        assert 0 < moves <= 60 // 3
+        assert starts[-1] > 0
+
+    def test_a_single_huge_line_is_still_sent(self) -> None:
+        core = self.window_core(50)
+        core.transcript.append("them: " + "x" * 500)
+        assert len(core.hint_window()) == 1
+
+    def test_the_window_resets_with_a_new_session(self) -> None:
+        core = self.window_core(100)
+        for index in range(30):
+            core.transcript.append(f"them: line number {index}")
+            core.hint_window()
+        core.transcript.clear()
+        core.reset_hint_window()
+        core.transcript.append("them: fresh")
+        assert core.hint_window() == ("them: fresh",)
+
+    async def test_a_hint_in_a_long_call_gets_the_window_not_everything(
+        self, url: str, core: Core
+    ) -> None:
+        core.transcript_budget_chars = 200
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        for index in range(80):
+            core.transcript.append(f"them: line number {index} with some words")
+        await console.send(json.dumps({"type": "hint.request", "mode": "conversational"}))
+        await drain(console, "hint.end")
+        sent = core.generator.contexts[-1].transcript
+        assert 0 < len(sent) < 80
+        assert sent[-1] == core.transcript[-1]
+        await console.close()
