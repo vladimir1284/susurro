@@ -63,7 +63,7 @@ are still about audio and not about prompts.
 
 ## M2 — Manual hint
 
-**Status: built. Time-to-first-token gate not evaluated; it needs M0's numbers.**
+**Status: built. M0 gate met on the bench (warm TTFT 0.13 s gemma-4-E2B, 0.40 s LFM2.5-1.2B). In a replayed call with real hints, TTFT while the speech model was busy: median about 0.3 s, one clip. Not yet measured on a live call; the "worth glancing at" half needs real calls.**
 
 **One to two days.**
 

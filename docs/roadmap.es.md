@@ -65,7 +65,7 @@ modos de fallo siguen siendo de audio y no de prompts.
 
 ## M2 — Sugerencia manual
 
-**Estado: construido. Puerta del tiempo hasta el primer token sin evaluar; necesita las cifras de M0.**
+**Estado: construido. Puerta de M0 cumplida en el banco (TTFT en caliente 0,13 s gemma-4-E2B, 0,40 s LFM2.5-1.2B). En una llamada reproducida con pistas reales, TTFT con el reconocedor ocupado: mediana de unos 0,3 s, un solo clip. Sin medir en llamada en vivo; la mitad de «vale la pena mirarla» necesita llamadas reales.**
 
 **Uno o dos días.**
 
