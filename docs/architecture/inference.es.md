@@ -1,10 +1,13 @@
 # Inferencia
 
-!!! warning "Son estimaciones"
-    Todas las cifras de esta página se derivan de especificaciones publicadas de hardware
-    y de tamaños de modelo, no de mediciones sobre la máquina de referencia.
-    [M0](../roadmap.md#m0-benchmark) existe para reemplazarlas. Si una medición
-    contradice algo de aquí, gana la medición y esta página se corrige.
+!!! warning "En su mayoría estimaciones"
+    Las cifras de esta página se derivan de especificaciones publicadas de hardware y de
+    tamaños de modelo. [M0](../roadmap.md#m0-benchmark) ya midió una parte en la máquina de
+    referencia (tiempo hasta el primer token, prefill, velocidad de decodificación, velocidad
+    del reconocimiento de voz, efecto del prefill del prefijo; ver
+    `bench/results/2026-11-17-awake.md`). La memoria con ambos modelos cargados, MLX y las
+    llamadas largas siguen siendo estimaciones. Si una medición contradice algo de aquí, gana
+    la medición y esta página se corrige.
 
 ## La restricción que manda es la memoria
 

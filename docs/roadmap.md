@@ -10,7 +10,7 @@ M0 through M3 together are the minimum real product. Everything after is increme
 
 ## M0 — Benchmark
 
-**Status: measured over 14 rounds on 2026-11-16/17: see `bench/results/2026-11-17-overnight.md`. Gate conditions met by gemma-4-E2B and LFM2.5-1.2B under llama.cpp, not by LFM2 2.6B. Memory with both models loaded and more than one speech clip not measured. The idle Mac mini slept ~13 s every minute (fixed by `caffeinate -s`, see Hardware); every number of that night includes it, so a rerun with the Mac awake is pending.**
+**Status: measured. 14 rounds on 2026-11-16/17 (`bench/results/2026-11-17-overnight.md`, distorted by the idle Mac sleeping ~13 s every minute, see Hardware) and a clean rerun of 7 rounds with the Mac awake (`bench/results/2026-11-17-awake.md`: 0 failed steps, no stalls, lag of finals 0.8 s mean). Gate conditions met by gemma-4-E2B and LFM2.5-1.2B under llama.cpp, not by LFM2 2.6B. Memory with both models loaded, more than one speech clip and MLX not measured.**
 
 **Half a day. Nothing else gets built until this is done.**
 

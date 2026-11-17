@@ -10,7 +10,7 @@ M0 a M3 juntos son el producto mínimo real. Todo lo que viene después es incre
 
 ## M0 — Benchmark
 
-**Estado: medido en 14 rondas la noche del 16 al 17-nov: ver `bench/results/2026-11-17-overnight.md`. Condiciones de la puerta cumplidas por gemma-4-E2B y LFM2.5-1.2B con llama.cpp, no por LFM2 2.6B. Sin medir la memoria con los dos modelos cargados ni más de un clip de voz. El Mac mini inactivo se dormía ~13 s cada minuto (se arregla con `caffeinate -s`, ver Hardware); todas las cifras de esa noche lo incluyen, así que falta repetir con el Mac despierto.**
+**Estado: medido. 14 rondas la noche del 16 al 17-nov (`bench/results/2026-11-17-overnight.md`, distorsionada porque el Mac inactivo se dormía ~13 s cada minuto, ver Hardware) y una repetición limpia de 7 rondas con el Mac despierto (`bench/results/2026-11-17-awake.md`: 0 pasos fallidos, sin atascos, retraso medio de los finales 0.8 s). Condiciones de la puerta cumplidas por gemma-4-E2B y LFM2.5-1.2B con llama.cpp, no por LFM2 2.6B. Sin medir: memoria con los dos modelos cargados, más de un clip de voz y MLX.**
 
 **Medio día. No se construye nada más hasta terminarlo.**
 

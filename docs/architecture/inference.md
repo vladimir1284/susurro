@@ -1,10 +1,12 @@
 # Inference
 
-!!! warning "These are estimates"
-    Every number on this page is derived from published hardware specifications and
-    model sizes, not from measurement on the reference machine.
-    [M0](../roadmap.md#m0-benchmark) exists to replace them. If a measured number
-    contradicts something here, the measurement wins and this page gets corrected.
+!!! warning "Mostly estimates"
+    The numbers on this page are derived from published hardware specifications and model
+    sizes. [M0](../roadmap.md#m0-benchmark) has since measured part of them on the reference
+    machine (time to first token, prefill, decode speed, speech speed, the effect of the
+    prefix prefill; see `bench/results/2026-11-17-awake.md`). Memory with both models loaded,
+    MLX and long calls are still estimates. If a measured number contradicts something here,
+    the measurement wins and this page gets corrected.
 
 ## The binding constraint is memory
 
