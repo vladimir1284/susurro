@@ -436,9 +436,11 @@ messages carry the detail.
   must come from the evaluation set. D11: a full window is closed at the last phrase boundary
   and the rest carried (needs segment start times; both backends give them), docstring
   corrected; partial cost is bounded by `max_window_s`, not reduced. The "done when" (end of
-  turn to `hint.start` on the replay set, wasted generations per call) is not reported yet.
-- **Not done:** Line 3 tasks 1, 3 and 4 (recordings, scoring, tuning), the measurement that
-  closes Line 4, D12 beyond `far_floor` being configurable, D13 beyond the documented
+  turn to `hint.start`, wasted generations per call) is measured on one clip in
+  `bench/results/2026-11-17-line4.md`: D6 leaves the median at about 0.6 s (before and after),
+  wasted generations went from 2 of 9 to 0 of 9 for a reason not shown. Other calls: not run.
+- **Not done:** Line 3 tasks 1, 3 and 4 (recordings, scoring, tuning), Line 4 on more than
+  one call, D12 beyond `far_floor` being configurable, D13 beyond the documented
   security model, the docs deployment.
 - **Open and unexplained:** requests that stall for 15 to 17 s on the Mac mini, and LFM2
   2.6B hanging at load under llama.cpp (not under Ollama).
