@@ -35,3 +35,7 @@ tests/fixtures/profiles/local/
 
 # Local configuration; holds the shared token
 core.toml
+
+# Local tool state
+.coverage
+.claude/scheduled_tasks.lock

@@ -65,6 +65,16 @@ El núcleo se niega a escuchar en `0.0.0.0` sin `--allow-public-bind`. Se autent
 token compartido en un parámetro de consulta, que alcanza para una LAN de confianza y no
 alcanza para nada más.
 
+### Modelo de seguridad
+
+Un único token compartido, enviado en la cadena de consulta de la URL sobre `ws://` y
+`http://` sin cifrar, y pasado a `susurro-capture` por línea de comandos, donde otros
+usuarios locales pueden leerlo. Nada va cifrado en tránsito. Es aceptable para la topología
+de referencia (dos máquinas en una LAN o una tailnet que controlas) y para nada más: no
+expongas el núcleo a una red no confiable ni lo ejecutes en una máquina con usuarios locales
+no confiables. Nada sale de tus máquinas, pero en una red compartida el audio y las
+sugerencias los puede leer cualquiera que esté en ella.
+
 ### Backends
 
 Ambos se seleccionan por configuración y no por importación, que es lo que permite que el
@@ -123,8 +133,8 @@ mismo audio de todas formas: en silencio, más tarde y de golpe. El total se reg
 terminar el carril. En Linux, `--backend auto` (el valor por defecto) usa PulseAudio, o su
 capa en PipeWire, cuando `pactl` responde, y PipeWire nativo si no; `--backend
 pulse|pipewire` fuerza uno. `--far` acepta un nombre de fuente en Linux
-(`@DEFAULT_MONITOR@` es el monitor del sink por defecto) o un nombre de dispositivo
-CoreAudio en macOS; ambos admiten `--list-devices` para encontrar el correcto.
+(`@DEFAULT_MONITOR@` es el monitor del sink por defecto); `--list-devices` los lista.
+No hay backend para macOS.
 
 El monitor de un sink inactivo no produce datos, así que el backend de PulseAudio rellena
 un carril silencioso con silencio al ritmo del reloj. Sin eso, el detector nunca ve la

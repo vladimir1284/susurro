@@ -92,7 +92,8 @@ def build_detectors(config: dict[str, Any]) -> dict[str, Detector] | None:
 def build_bleed(config: dict[str, Any]) -> BleedGate | None:
     """The loudspeaker rule for the mic lane. ``bleed_ratio = 0`` turns it off."""
     ratio = float(config.get("bleed_ratio", BleedGate.ratio))
-    return BleedGate(ratio=ratio) if ratio > 0 else None
+    floor = float(config.get("bleed_far_floor", BleedGate.far_floor))
+    return BleedGate(ratio=ratio, far_floor=floor) if ratio > 0 else None
 
 
 def build_history(config: dict[str, Any]) -> HistoryStore:

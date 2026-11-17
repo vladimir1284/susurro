@@ -28,7 +28,8 @@ they are visible to everyone in the call. A separate device is the only arrangem
 works, and it falls out naturally once the core is already a network service.
 
 **The capture client is portable, the core is not.** Capture is a few hundred lines per
-platform — PipeWire on Linux, CoreAudio on macOS. The core is a pile of model weights and
+platform — PulseAudio and PipeWire on Linux are built; other platforms (macOS, say) are
+not, but would not touch the core. The core is a pile of model weights and
 accelerator-specific runtimes. Separating them means a new client platform is a small
 amount of work and does not touch inference at all.
 

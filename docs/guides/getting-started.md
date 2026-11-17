@@ -112,9 +112,8 @@ it. 16 GB is enough for the models or for a video call, not comfortably for both
 
 === "macOS"
 
-    macOS has no system audio capture of its own. Install
-    [BlackHole](https://github.com/ExistentialAudio/BlackHole), set it as the output your
-    meeting app uses, and pass it as `--far`.
+    Not supported: there is no macOS capture backend yet. Run the capture client on a
+    Linux machine, or use the replay mode below.
 
 === "No audio devices"
 

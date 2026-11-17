@@ -46,6 +46,10 @@ end_windows = 24
 # quiet user talking over the other person can lose words at 2.0; headphones are
 # the better fix.
 bleed_ratio = 2.0
+# Raw RMS under which the far lane counts as silent and the rule stands down. It
+# depends on capture gain: far speech measured 400-950 and idle noise 50-125 on
+# two recorded calls, at one gain. Raise it if idle noise trips the rule.
+bleed_far_floor = 250
 
 [llm]
 # "fake" returns canned text. "openai" talks to any OpenAI-compatible server:

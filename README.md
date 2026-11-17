@@ -25,7 +25,7 @@ conversation that should not sit in a third party's logs.
 ```
 capture client  ──Opus/WS──▶  core  ──JSON/WS──▶  console
 (mic + loopback)              (STT, hints)        (phone / 2nd screen)
- Linux or macOS               Mac mini M4 16 GB    any browser
+ Linux                       Mac mini M4 16 GB    any browser
 ```
 
 Three decisions, each explained in the docs:

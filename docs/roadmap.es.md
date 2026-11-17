@@ -10,6 +10,8 @@ M0 a M3 juntos son el producto mínimo real. Todo lo que viene después es incre
 
 ## M0 — Benchmark
 
+**Estado: arnés construido, mediciones sin tomar.**
+
 **Medio día. No se construye nada más hasta terminarlo.**
 
 Toda la arquitectura descansa sobre cifras de inferencia que hoy son estimaciones.
@@ -42,10 +44,12 @@ resultados en esta documentación.
 
 ## M1 — Espina dorsal
 
+**Estado: construido en Linux (PulseAudio), usado en una llamada real. Puerta de retraso de diez minutos sin evaluar.**
+
 **Uno o dos días.**
 
-Ruta de audio de extremo a extremo sin modelo de lenguaje: captura en macOS de ambos
-carriles, Opus por WebSocket, VAD, reconocimiento en streaming, consola dibujando dos
+Ruta de audio de extremo a extremo sin modelo de lenguaje: captura de ambos
+carriles (PulseAudio en Linux; no hay backend para macOS), Opus por WebSocket, VAD, reconocimiento en streaming, consola dibujando dos
 carriles de transcripción.
 
 Esto demuestra la parte difícil de la fontanería —dos flujos independientes, semántica de
@@ -60,6 +64,8 @@ modos de fallo siguen siendo de audio y no de prompts.
 ---
 
 ## M2 — Sugerencia manual
+
+**Estado: construido. Puerta del tiempo hasta el primer token sin evaluar; necesita las cifras de M0.**
 
 **Uno o dos días.**
 
@@ -79,6 +85,8 @@ llegan a la consola en streaming según se producen.
 
 ## M3 — Cliente Linux
 
+**Estado: PulseAudio construido y usado; PipeWire escrito, nunca ejecutado. Puerta entre máquinas sin evaluar.**
+
 **Un día.**
 
 Captura con PipeWire en el N95, mismo protocolo, sin cambios en el núcleo. Si hay que
@@ -87,7 +95,7 @@ y se arregla aquí.
 
 !!! success "Puerta"
     Una sesión completa conducida desde la máquina Linux con el Mac mini como núcleo, con
-    latencia dentro del ruido respecto al caso local de macOS.
+    latencia dentro del ruido respecto a un núcleo corriendo en la propia máquina de captura.
 
 **Esta es la primera versión genuinamente útil.**
 
@@ -107,9 +115,9 @@ su final todavía no se ha emitido.
     La latencia percibida baja de forma medible respecto a M2 en las mismas
     conversaciones, y los arranques en falso no distraen en la práctica.
 
-    **Sin cumplir.** Las dos mitades necesitan llamadas reales para juzgarse, y la
-    dirección positiva del detector —que dispare con habla real— nunca se ha ejercitado
-    aquí, solo la negativa con silencio, ruido y tonos.
+    **Sin evaluar.** Las dos mitades necesitan llamadas reales para juzgarse. El detector
+    sí disparó con habla en una llamada grabada en español con dos carriles, pero una
+    llamada no dice nada sobre la variedad de voces y líneas.
 
 ---
 

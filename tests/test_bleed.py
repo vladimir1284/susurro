@@ -95,6 +95,12 @@ class TestBuildBleed:
     def test_zero_turns_it_off(self) -> None:
         assert build_bleed({"bleed_ratio": 0}) is None
 
+    def test_the_far_floor_is_configurable(self) -> None:
+        # Raw RMS, so it depends on capture gain; a fixed 250 is only right for
+        # the gain it was measured at.
+        assert build_bleed({}).far_floor == 250.0
+        assert build_bleed({"bleed_far_floor": 600}).far_floor == 600.0
+
     def test_the_ratio_is_configurable(self) -> None:
         assert build_bleed({"bleed_ratio": 3.5}).ratio == 3.5  # type: ignore[union-attr]
 

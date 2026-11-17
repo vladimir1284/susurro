@@ -28,7 +28,8 @@ que estás compartiendo, las ve todo el mundo en la llamada. Un dispositivo apar
 única disposición que funciona, y sale sola en cuanto el núcleo ya es un servicio de red.
 
 **El cliente de captura es portable, el núcleo no.** La captura son unos cientos de líneas
-por plataforma —PipeWire en Linux, CoreAudio en macOS—. El núcleo es un montón de pesos
+por plataforma —PulseAudio y PipeWire en Linux están construidos; otras plataformas
+(macOS, por ejemplo) no, pero no tocarían el núcleo—. El núcleo es un montón de pesos
 de modelos y de runtimes atados al acelerador. Separarlos significa que una plataforma
 nueva de cliente es trabajo pequeño y no toca la inferencia.
 

@@ -10,6 +10,8 @@ M0 through M3 together are the minimum real product. Everything after is increme
 
 ## M0 — Benchmark
 
+**Status: harness built, measurements not taken.**
+
 **Half a day. Nothing else gets built until this is done.**
 
 The entire architecture rests on inference numbers that are currently estimates. Writing
@@ -41,9 +43,12 @@ these docs.
 
 ## M1 — Spine
 
+**Status: built on Linux (PulseAudio), used on one real call. Ten-minute lag gate not evaluated.**
+
 **One to two days.**
 
-End-to-end audio path with no language model at all: macOS capture of both lanes, Opus
+End-to-end audio path with no language model at all: capture of both lanes (PulseAudio on
+Linux; there is no macOS backend), Opus
 over WebSocket, VAD, streaming recognition, console rendering two transcript lanes.
 
 This proves the hard part of the plumbing — two independent streams, partial and final
@@ -57,6 +62,8 @@ are still about audio and not about prompts.
 ---
 
 ## M2 — Manual hint
+
+**Status: built. Time-to-first-token gate not evaluated; it needs M0's numbers.**
 
 **One to two days.**
 
@@ -75,6 +82,8 @@ produced.
 
 ## M3 — Linux client
 
+**Status: PulseAudio built and used; PipeWire written, never executed. Cross-machine gate not evaluated.**
+
 **One day.**
 
 PipeWire capture on the N95, same protocol, no core changes. If the core needs changing
@@ -82,7 +91,7 @@ to accept a second client platform, the protocol was wrong and gets fixed here.
 
 !!! success "Gate"
     A full session driven from the Linux machine with the Mac mini as core, latency
-    within noise of the macOS-local case.
+    within noise of a core running on the capture machine itself.
 
 **This is the first genuinely useful version.**
 
@@ -102,9 +111,9 @@ because the final for it has not been emitted yet.
     Perceived latency drops measurably against M2 on the same conversations, and false
     starts are not distracting in practice.
 
-    **Not met.** Both halves need real calls to judge, and the detector's positive
-    direction — that it fires on actual speech — has never been exercised here, only its
-    negative direction on silence, noise and tones.
+    **Not evaluated.** Both halves need real calls to judge. The detector did fire on
+    speech in one recorded two-lane Spanish call, but one call says nothing about a
+    variety of voices and lines.
 
 ---
 

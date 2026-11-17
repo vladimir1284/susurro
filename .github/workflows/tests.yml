@@ -64,7 +64,8 @@ jobs:
       # The slow test loads a real speech model. It is skipped by default
       # because it says nothing about the target hardware, but it is the only
       # thing that would catch faster-whisper's API changing underneath us, so
-      # it runs on a schedule rather than never.
+      # it runs when dispatched by hand rather than never. There is no schedule
+      # trigger.
       - name: Smoke test the real model
         if: github.event_name == 'workflow_dispatch'
         env:

@@ -64,6 +64,15 @@ The core refuses to bind `0.0.0.0` without `--allow-public-bind`. It authenticat
 shared token in a query parameter, which is enough for a trusted LAN and not enough for
 anything else.
 
+### Security model
+
+One shared token, sent in the URL query string over plain `ws://` and `http://`, and passed
+to `susurro-capture` on its command line, where other local users can read it. Nothing is
+encrypted in transit. That is acceptable for the reference topology (two machines on a LAN
+or a tailnet you control) and for nothing else: do not expose the core to an untrusted
+network, and do not run it on a machine with untrusted local users. Nothing leaves your
+machines, but on a shared network the audio and the hints are readable by anyone on it.
+
 ### Backends
 
 Both are selected by configuration rather than by import, which is what lets the same
@@ -122,8 +131,8 @@ anyway — silently, later, and in a burst. The count is logged at the end of th
 The backend is selected from the platform. On Linux, `--backend auto` (the default) uses
 PulseAudio, or PipeWire's PulseAudio layer, when `pactl` answers, and native PipeWire
 otherwise; `--backend pulse|pipewire` forces one. `--far` takes a source name on Linux
-(`@DEFAULT_MONITOR@` is the monitor of the default sink) or a CoreAudio device name on
-macOS; both accept `--list-devices` to find the right one.
+(`@DEFAULT_MONITOR@` is the monitor of the default sink); `--list-devices` lists them.
+There is no macOS backend.
 
 A monitor of an idle sink produces no data at all, so the PulseAudio backend pads a quiet
 lane with silence at clock pace. Without it the detector never sees the pause that ends a

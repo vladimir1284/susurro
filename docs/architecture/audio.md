@@ -25,11 +25,11 @@ express cleanly on a mixed stream.
 | Platform | `mic` | `far` |
 |---|---|---|
 | Linux | PulseAudio source (`parec`), or PipeWire | Monitor of the default sink (`@DEFAULT_MONITOR@`) |
-| macOS | CoreAudio input | Loopback device ([BlackHole](https://github.com/ExistentialAudio/BlackHole) or equivalent) |
 
-macOS has no system loopback of its own, so a virtual audio device is a setup
-prerequisite, not something Susurro can avoid. On Linux the monitor source exists by
-default and needs no extra software.
+**macOS is not built.** `capture/backends/` has `file`, `pulse` and `pipewire`; there is no
+CoreAudio backend. Whether to build one is an open decision. If it is, macOS has no system
+loopback of its own, so a virtual audio device (BlackHole or equivalent) would be a setup
+prerequisite. On Linux the monitor source exists by default and needs no extra software.
 
 ## Format and transport
 
@@ -86,6 +86,7 @@ scale together with the speaker volume.
 | Setting | Default | Meaning |
 |---|---|---|
 | `[vad] bleed_ratio` | 2.0 | Mic frames below this multiple of the far lane's level (held 0.6 s) are silenced. `0` turns it off. |
+| `[vad] bleed_far_floor` | 250 | Raw RMS under which the far lane counts as silent and the rule stands down. Depends on capture gain; tuned on two calls. |
 
 On the recorded call, three lines of eleven on the mic lane that the user never said disappeared (one of them
 "nos vemos en el próximo vídeo", invented from the far voice) and every line the user spoke

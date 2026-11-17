@@ -25,11 +25,12 @@ detectar, e imposible de expresar limpiamente sobre un flujo mezclado.
 | Plataforma | `mic` | `far` |
 |---|---|---|
 | Linux | Fuente de PulseAudio (`parec`), o PipeWire | Monitor del sink por defecto (`@DEFAULT_MONITOR@`) |
-| macOS | Entrada de CoreAudio | Dispositivo de loopback ([BlackHole](https://github.com/ExistentialAudio/BlackHole) o equivalente) |
 
-macOS no tiene loopback de sistema propio, así que un dispositivo de audio virtual es un
-requisito de instalación, no algo que Susurro pueda evitar. En Linux el monitor existe por
-defecto y no necesita software extra.
+**macOS no está construido.** `capture/backends/` tiene `file`, `pulse` y `pipewire`; no hay
+backend de CoreAudio. Construirlo es una decisión abierta. Si se hace, macOS no tiene
+loopback de sistema propio, así que un dispositivo de audio virtual (BlackHole o
+equivalente) sería un requisito de instalación. En Linux el monitor existe por defecto y no
+necesita software extra.
 
 ## Formato y transporte
 
@@ -87,6 +88,7 @@ nivel fijo, porque la fuga y el carril `far` suben y bajan juntos con el volumen
 | Ajuste | Por defecto | Significado |
 |---|---|---|
 | `[vad] bleed_ratio` | 2.0 | Los fotogramas del micrófono por debajo de este múltiplo del nivel del carril `far` (retenido 0.6 s) se silencian. `0` lo desactiva. |
+| `[vad] bleed_far_floor` | 250 | RMS bruto por debajo del cual el carril `far` cuenta como silencioso y la regla se aparta. Depende de la ganancia de captura; ajustado con dos llamadas. |
 
 En la llamada grabada desaparecieron tres de las once líneas del carril `mic` que el usuario nunca dijo (una
 fue "nos vemos en el próximo vídeo", inventada a partir de la voz lejana) y se conservaron todas

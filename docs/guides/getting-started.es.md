@@ -116,9 +116,8 @@ ambos.
 
 === "macOS"
 
-    macOS no tiene captura del audio del sistema. Instala
-    [BlackHole](https://github.com/ExistentialAudio/BlackHole), ponlo como salida que usa
-    tu aplicación de reunión, y pásalo como `--far`.
+    No soportado: todavía no hay backend de captura para macOS. Ejecuta el cliente de
+    captura en una máquina Linux, o usa el modo de repetición de más abajo.
 
 === "Sin dispositivos de audio"
 
