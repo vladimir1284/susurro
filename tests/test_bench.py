@@ -464,3 +464,43 @@ class TestWhisperCppProbe:
         assert seen["url"] == "http://stt.test"
         assert seen["language"] == "es"
         assert json.loads(out.read_text())["gates"]["stt_realtime_factor"]["value"] == 0.1
+
+
+class TestHintStats:
+    """What a replay with real hints counts: AUDIT.md D8 asks how many
+    generations a call wastes, and what the language model costs the speech one."""
+
+    @staticmethod
+    def events(stats, *messages: dict) -> None:
+        for message in messages:
+            stats.observe(json.dumps(message))
+
+    def test_it_counts_started_completed_and_cancelled(self) -> None:
+        from bench.replay_call import HintStats
+
+        stats = HintStats()
+        self.events(
+            stats,
+            {"type": "hint.start", "hint_id": "h-1", "trigger": "speculative", "mode": "business"},
+            {"type": "hint.end", "hint_id": "h-1", "reason": "cancelled"},
+            {"type": "hint.start", "hint_id": "h-2", "trigger": "speculative", "mode": "business"},
+            {"type": "hint.delta", "hint_id": "h-2", "text": "- a"},
+            {"type": "hint.end", "hint_id": "h-2", "reason": "complete", "tokens": 5, "ttft_ms": 300},
+            {"type": "hint.start", "hint_id": "h-3", "trigger": "speculative", "mode": "business"},
+            {"type": "hint.end", "hint_id": "h-3", "reason": "error"},
+        )
+        summary = stats.summary()
+        assert summary["started"] == 3
+        assert summary["completed"] == 1
+        assert summary["cancelled"] == 1
+        assert summary["errors"] == 1
+        assert summary["wasted"] == 2  # everything that did not complete
+        assert summary["ttft_ms"] == [300]
+
+    def test_it_ignores_other_events(self) -> None:
+        from bench.replay_call import HintStats
+
+        stats = HintStats()
+        self.events(stats, {"type": "state"}, {"type": "transcript.final"})
+        stats.observe("not json")
+        assert stats.summary()["started"] == 0

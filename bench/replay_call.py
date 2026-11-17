@@ -29,6 +29,7 @@ from pathlib import Path
 from bench.wer import score, term_recall
 from core.bleed import BleedGate
 from core.llm.fake import CannedHintGenerator
+from core.llm.openai_compat import OpenAICompatGenerator
 from core.main import build_detectors
 from core.protocol import FRAME_MS, SAMPLE_RATE
 from core.server import Core
@@ -42,12 +43,65 @@ PROFILES = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "prof
 
 
 @dataclass
+class HintStats:
+    """Counts the hint lifecycle events a replay's core broadcasts."""
+
+    started: int = 0
+    completed: int = 0
+    cancelled: int = 0
+    errors: int = 0
+    ttft_ms: list[int] = field(default_factory=list)
+
+    def observe(self, message: str) -> None:
+        try:
+            event = json.loads(message)
+        except ValueError:
+            return
+        kind = event.get("type")
+        if kind == "hint.start":
+            self.started += 1
+        elif kind == "hint.end":
+            reason = event.get("reason")
+            if reason == "complete":
+                self.completed += 1
+                if event.get("ttft_ms") is not None:
+                    self.ttft_ms.append(event["ttft_ms"])
+            elif reason == "cancelled":
+                self.cancelled += 1
+            elif reason == "error":
+                self.errors += 1
+
+    def summary(self) -> dict:
+        ordered = sorted(self.ttft_ms)
+        return {
+            "started": self.started,
+            "completed": self.completed,
+            "cancelled": self.cancelled,
+            "errors": self.errors,
+            "wasted": self.started - self.completed,
+            "ttft_ms": self.ttft_ms,
+            "ttft_ms_median": ordered[len(ordered) // 2] if ordered else None,
+        }
+
+
+@dataclass
+class HintConfig:
+    """A real model server for the replay's hints."""
+
+    url: str
+    profile_id: str
+    model: str = "local"
+    mode: str = "business"
+
+
+@dataclass
 class Replay:
     seconds: float
     finals: list[dict] = field(default_factory=list)
     partials: dict[str, int] = field(default_factory=lambda: {"mic": 0, "far": 0})
     #: Per lane, the most the lane fell behind the clock while feeding.
     worst_backlog_s: dict[str, float] = field(default_factory=lambda: {"mic": 0.0, "far": 0.0})
+    hints: HintStats | None = None
 
     def lag(self) -> list[float]:
         return [f["lag_s"] for f in self.finals]
@@ -64,21 +118,40 @@ def load_lane(directory: Path, lane: str, start_s: float, end_s: float) -> bytes
 
 async def replay(
     recognizer: Recognizer, directory: Path, start_s: float, end_s: float,
-    end_windows: int = 16, bleed_ratio: float = 0.0,
+    end_windows: int = 16, bleed_ratio: float = 0.0, hints: HintConfig | None = None,
 ) -> Replay:
+    generator = (
+        OpenAICompatGenerator(base_url=hints.url, model=hints.model, timeout_s=120.0)
+        if hints
+        else CannedHintGenerator()
+    )
     core = Core(
         profiles=ProfileStore(PROFILES),
         recognizer=recognizer,
-        generator=CannedHintGenerator(),
+        generator=generator,
         token="replay",
         bleed=BleedGate(ratio=bleed_ratio) if bleed_ratio > 0 else None,
         detectors=build_detectors(
             {"backend": "silero", "threshold": 0.5, "start_windows": 2, "end_windows": end_windows}
         ),
     )
+    stats = HintStats()
+    if hints:
+        profile = core.profiles.load(hints.profile_id)
+        core.state.configure(profile.id, profile.language, hints.mode)  # type: ignore[arg-type]
+        original_broadcast = core.broadcast
+
+        async def observed(message: str) -> None:
+            stats.observe(message)
+            await original_broadcast(message)
+
+        core.broadcast = observed  # type: ignore[method-assign]
+        # A real session: speculation only runs while one is live, and starting
+        # one prefills the model, as it does before a call.
+        await core.start_session()
     audio = {lane: load_lane(directory, lane, start_s, end_s) for lane in ("mic", "far")}
     frames = min(len(pcm) for pcm in audio.values()) // FRAME_BYTES
-    result = Replay(seconds=frames * FRAME_MS / 1000)
+    result = Replay(seconds=frames * FRAME_MS / 1000, hints=stats if hints else None)
     origin = time.monotonic()
     emit = core.emit_segment
 
@@ -114,6 +187,9 @@ async def replay(
     for lane in ("mic", "far"):
         for segment in await core.flush_lane(lane):  # type: ignore[arg-type]
             await core.emit_segment(segment)
+    if hints:
+        await core.cancel_hint()
+        await generator.aclose()  # type: ignore[union-attr]
     return result
 
 
@@ -127,6 +203,8 @@ def report(result: Replay, script: dict | None) -> dict:
         "final_lag_max_s": round(max(lags), 1) if lags else None,
         "worst_backlog_s": {k: round(v, 1) for k, v in result.worst_backlog_s.items()},
     }
+    if result.hints is not None:
+        summary["hints"] = result.hints.summary()
     if script:
         for lane in ("far", "mic"):
             scored = score(script[lane], result.text(lane))
@@ -157,9 +235,15 @@ def main(argv: list[str] | None = None) -> int:
                         help="32 ms windows of silence that end a turn (16 is about 0.5 s)")
     parser.add_argument("--bleed-ratio", type=float, default=0.0,
                         help="silence mic frames quieter than this times the far lane (0 is off)")
+    parser.add_argument("--hints-url", help="OpenAI-compatible server: really start a "
+                        "session and generate hints during the replay")
+    parser.add_argument("--hints-model", default="local")
+    parser.add_argument("--hints-mode", default="business")
     parser.add_argument("--script", type=Path, help="JSON script to score against")
     parser.add_argument("--out", type=Path, help="write the finals and summary here (new file)")
     args = parser.parse_args(argv)
+    if args.hints_url and not args.profile:
+        parser.error("--hints-url needs --profile: a session is started from one")
 
     with wave.open(str(args.session / "mic.wav")) as probe:
         total = probe.getnframes() / probe.getframerate()
@@ -183,7 +267,9 @@ def main(argv: list[str] | None = None) -> int:
 
     result = asyncio.run(
         replay(recognizer, args.session, args.start, args.end or total, args.end_windows,
-                args.bleed_ratio)
+                args.bleed_ratio,
+                HintConfig(args.hints_url, args.profile, args.hints_model, args.hints_mode)
+                if args.hints_url else None)
     )
     script = json.loads(args.script.read_text(encoding="utf-8")) if args.script else None
     summary = report(result, script)
