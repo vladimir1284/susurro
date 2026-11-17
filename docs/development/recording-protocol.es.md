@@ -28,7 +28,54 @@ en cuando: eso es lo que el detector nunca ha probado.
 
 Lo que se lee en voz alta en cada llamada, listo para leer, está en [Guiones de grabación](recording-scripts.es.md).
 
-## Cómo grabar
+## Grabar con la herramienta
+
+`bench/record_call.py` hace todo lo de abajo en un comando: los dos carriles, `meta.json`, la
+copia del guion y un veredicto sobre la toma. Los números de llamada son las filas de la tabla
+de arriba (la 6 es la llamada opcional de interrupción).
+
+```bash
+.venv/bin/python -m bench.record_call --list-devices   # una vez: revisa las fuentes
+.venv/bin/python -m bench.record_call 1                # graba recordings/call1/
+```
+
+**Antes de cada llamada**
+
+1. La otra persona acepta que la graben. Abre la app de llamada (o lo que reproduzca su voz por
+   esta máquina). El carril far es lo que sale por la salida de audio por defecto.
+2. Llamadas con auriculares (1, 3, 5, 6): auriculares puestos toda la llamada. Llamadas con
+   altavoces (2, 4): altavoces al volumen que usarías de verdad, y **no silencies ni bajes la voz
+   lejana**: que el micrófono la oiga es lo que prueba esa llamada.
+3. Llamada con guion: ten abierto `recording-scripts.es.md` en la llamada que haces. Far lee la
+   lista far, tú la lista mic, alternando, diciendo antes el número del intercambio, a ritmo
+   normal. No leas las acotaciones. No habléis a la vez salvo que el guion lo diga (llamada 6).
+4. Llamada sin guion: elige un tema que ambos conozcan y habla como en una llamada real.
+   Interrumpíos de vez en cuando. Llamada 5: la media hora entera, mejor con una voz lejana que
+   no hayas usado. Para hacerla en inglés añade `--language en` (solo llamada 5);
+   `--setup loudspeakers` cambia su montaje.
+
+**Durante**: la herramienta hace una prueba de nivel de 4 s (habla y que hable el otro lado),
+muestra las dos fuentes y espera Enter. Luego: 3 s de silencio, grabas, 3 s de silencio, Enter
+para parar. Apunta a picos de voz en torno a -12 dBFS; por debajo de -40 es una fuente
+equivocada.
+
+**Después**: imprime duraciones, niveles, cuánto habla cada lado, cuánto se solapan y si el
+micrófono sigue al carril far. El veredicto es uno de:
+
+- `KEEP`: sirve.
+- `KEEP IF THE WARNINGS ARE EXPECTED`: léelos; p. ej. no haber solapamiento vale en la 1, no en
+  la 6.
+- `RE-RECORD`: carriles que difieren más de 1 s, un carril mudo o saturado, demasiado corta, o
+  la voz lejana se cuela en el micrófono en una llamada con auriculares. Mueve o borra la
+  carpeta y graba otra vez; la herramienta nunca sobrescribe. Ninguna toma rechazada debe entrar
+  en el conjunto.
+
+Reglas que el verificador no ve: una llamada por toma (no pegues trozos), no edites el audio, no
+repitas una frase en la que tropezaste (el tropiezo es dato) y cuéntame después qué fue distinto
+del guion. Si el carril far empieza un segundo tarde es el sink despertando; reproduce cualquier
+sonido antes de empezar.
+
+## Grabar a mano
 
 Cada carril se graba por separado, desde las mismas fuentes que usa el cliente de captura
 (`susurro-capture --list-devices` las nombra). Arranca ambos a la vez:

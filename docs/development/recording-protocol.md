@@ -28,7 +28,50 @@ now and then: that is what the detector has never been tested on.
 
 What to read aloud for each call, ready to read, is in [Recording scripts](recording-scripts.md).
 
-## How to record
+## Recording with the tool
+
+`bench/record_call.py` does everything below in one command: both lanes, `meta.json`, the
+script copy, and a verdict on the take. Call numbers are the rows of the table above (6 is the
+optional interruption call).
+
+```bash
+.venv/bin/python -m bench.record_call --list-devices   # once: check the sources
+.venv/bin/python -m bench.record_call 1                # records recordings/call1/
+```
+
+**Before each call**
+
+1. Far person agrees to be recorded. Open the call app (or anything that plays their voice
+   through this machine). The far lane is whatever comes out of the default output.
+2. Headphones calls (1, 3, 5, 6): headphones on for the whole call. Loudspeaker calls (2, 4):
+   speakers at the volume you would really use, and **do not mute or lower the far voice**: the
+   mic hearing it is what the call tests.
+3. Scripted call: have `recording-scripts.md` open on the call you are doing. Far reads the far
+   list, you read the mic list, alternating, saying the exchange number first, at a normal pace.
+   Do not read stage directions. Do not talk over each other unless the script says so (call 6).
+4. Unscripted call: pick a subject you both know and talk as in a real call. Interrupt each
+   other now and then. Call 5: the full 30 minutes, ideally with a far voice not used before.
+   To make it English, add `--language en` (call 5 only); `--setup loudspeakers` changes its setup.
+
+**During**: the tool runs a 4 s level check (talk, and have the far side talk), shows both
+sources and waits for Enter. Then: 3 s of silence, record, 3 s of silence, Enter to stop. Aim
+for speech peaking around -12 dBFS; below -40 means a wrong source.
+
+**After**: it prints measured lengths, levels, how much of the time each side talks, how much
+they overlap, and whether the mic follows the far lane. The verdict is one of:
+
+- `KEEP`: use it.
+- `KEEP IF THE WARNINGS ARE EXPECTED`: read them; e.g. no overlap is fine in call 1, not in 6.
+- `RE-RECORD`: lanes differ by over 1 s, a lane is silent or clips, too short, or the far voice
+  leaks into the mic on a headphones call. Move or delete the folder and record again; the tool
+  never overwrites. Nothing from a rejected take should reach the set.
+
+Rules that the checker cannot see: one call per take (do not stitch), do not edit audio, do not
+re-read a sentence you stumbled on (a stumble is data), and tell me afterwards what went
+differently from the script. If the far lane starts late by a second it is the sink waking up;
+play any sound before starting.
+
+## Recording by hand
 
 Each lane is recorded on its own, from the same sources the capture client uses
 (`susurro-capture --list-devices` names them). Start both at the same moment:

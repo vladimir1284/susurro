@@ -39,3 +39,6 @@ core.toml
 # Local tool state
 .coverage
 .claude/scheduled_tasks.lock
+
+# Evaluation-set recordings (voices of real people): never committed
+recordings/
