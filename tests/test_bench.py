@@ -504,3 +504,39 @@ class TestHintStats:
         self.events(stats, {"type": "state"}, {"type": "transcript.final"})
         stats.observe("not json")
         assert stats.summary()["started"] == 0
+
+
+class TestHintTextsAreKept:
+    """A hint can only be rated if its text survives the run."""
+
+    def test_the_text_and_the_question_are_recorded_per_hint(self) -> None:
+        from bench.replay_call import HintStats
+
+        lines = ["them: how do you handle the PLC link?"]
+        stats = HintStats(context=lambda: list(lines))
+        for message in (
+            {"type": "hint.start", "hint_id": "h-1", "trigger": "speculative", "mode": "business"},
+            {"type": "hint.delta", "hint_id": "h-1", "text": "- Modbus TCP\n"},
+            {"type": "hint.delta", "hint_id": "h-1", "text": "- retries"},
+            {"type": "hint.end", "hint_id": "h-1", "reason": "complete", "tokens": 4, "ttft_ms": 250},
+        ):
+            stats.observe(json.dumps(message))
+        (record,) = stats.records
+        assert record["text"] == "- Modbus TCP\n- retries"
+        assert record["context"] == ["them: how do you handle the PLC link?"]
+        assert record["reason"] == "complete"
+        assert record["mode"] == "business"
+        assert record["ttft_ms"] == 250
+
+    def test_a_cancelled_hint_keeps_what_it_wrote(self) -> None:
+        from bench.replay_call import HintStats
+
+        stats = HintStats()
+        for message in (
+            {"type": "hint.start", "hint_id": "h-1", "trigger": "speculative", "mode": "business"},
+            {"type": "hint.delta", "hint_id": "h-1", "text": "- half"},
+            {"type": "hint.end", "hint_id": "h-1", "reason": "cancelled"},
+        ):
+            stats.observe(json.dumps(message))
+        assert stats.records[0]["text"] == "- half"
+        assert stats.records[0]["reason"] == "cancelled"

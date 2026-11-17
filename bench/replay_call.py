@@ -23,6 +23,7 @@ import asyncio
 import json
 import time
 import wave
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -44,13 +45,18 @@ PROFILES = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "prof
 
 @dataclass
 class HintStats:
-    """Counts the hint lifecycle events a replay's core broadcasts."""
+    """Counts the hint lifecycle events a replay's core broadcasts, and keeps
+    each hint's text and the lines it answered so it can be rated afterwards."""
 
     started: int = 0
     completed: int = 0
     cancelled: int = 0
     errors: int = 0
     ttft_ms: list[int] = field(default_factory=list)
+    #: Called when a hint starts: the transcript lines it was written against.
+    context: Callable[[], list[str]] | None = None
+    records: list[dict] = field(default_factory=list)
+    _open: dict[str, dict] = field(default_factory=dict)
 
     def observe(self, message: str) -> None:
         try:
@@ -58,10 +64,25 @@ class HintStats:
         except ValueError:
             return
         kind = event.get("type")
+        hint_id = event.get("hint_id")
         if kind == "hint.start":
             self.started += 1
+            self._open[hint_id] = {
+                "hint_id": hint_id,
+                "trigger": event.get("trigger"),
+                "mode": event.get("mode"),
+                "context": self.context()[-3:] if self.context else [],
+                "text": "",
+            }
+        elif kind == "hint.delta" and hint_id in self._open:
+            self._open[hint_id]["text"] += event.get("text", "")
         elif kind == "hint.end":
             reason = event.get("reason")
+            record = self._open.pop(hint_id, None)
+            if record is not None:
+                record["reason"] = reason
+                record["ttft_ms"] = event.get("ttft_ms")
+                self.records.append(record)
             if reason == "complete":
                 self.completed += 1
                 if event.get("ttft_ms") is not None:
@@ -135,7 +156,7 @@ async def replay(
             {"backend": "silero", "threshold": 0.5, "start_windows": 2, "end_windows": end_windows}
         ),
     )
-    stats = HintStats()
+    stats = HintStats(context=lambda: list(core.transcript))
     if hints:
         profile = core.profiles.load(hints.profile_id)
         core.state.configure(profile.id, profile.language, hints.mode)  # type: ignore[arg-type]
@@ -278,7 +299,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.out.exists():
             raise SystemExit(f"{args.out} exists; this tool never overwrites")
         args.out.write_text(
-            json.dumps({"summary": summary, "finals": result.finals}, ensure_ascii=False, indent=2),
+            json.dumps(
+                {
+                    "summary": summary,
+                    "finals": result.finals,
+                    **({"hints": result.hints.records} if result.hints else {}),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
             encoding="utf-8",
         )
     return 0
