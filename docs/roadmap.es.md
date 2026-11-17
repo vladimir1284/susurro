@@ -10,7 +10,7 @@ M0 a M3 juntos son el producto mínimo real. Todo lo que viene después es incre
 
 ## M0 — Benchmark
 
-**Estado: arnés construido. Mitad del modelo de lenguaje medida el 2026-11-16 (tres modelos, llama.cpp, una ejecución cada uno): ver `bench/results/2026-11-16-mac-llamacpp.md`. Voz sin medir; puerta sin decidir.**
+**Estado: medido en 14 rondas la noche del 16 al 17-nov: ver `bench/results/2026-11-17-overnight.md`. Condiciones de la puerta cumplidas por gemma-4-E2B y LFM2.5-1.2B con llama.cpp, no por LFM2 2.6B. Sin medir la memoria con los dos modelos cargados ni más de un clip de voz. El propio Mac se congela ~13 s cada minuto; la puerta no lo detecta.**
 
 **Medio día. No se construye nada más hasta terminarlo.**
 
