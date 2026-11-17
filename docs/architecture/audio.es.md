@@ -89,6 +89,9 @@ nivel fijo, porque la fuga y el carril `far` suben y bajan juntos con el volumen
 |---|---|---|
 | `[vad] bleed_ratio` | 2.0 | Los fotogramas del micrófono por debajo de este múltiplo del nivel del carril `far` (retenido 0.6 s) se silencian. `0` lo desactiva. |
 | `[vad] bleed_far_floor` | 250 | RMS bruto por debajo del cual el carril `far` cuenta como silencioso y la regla se aparta. Depende de la ganancia de captura; ajustado con dos llamadas. |
+| `[vad] speculate_min_words` | 0 | Un turno `far` con menos palabras que esto no inicia una pista especulativa. `0` = desactivado. Sin medir. |
+| `[vad] speculate_min_turn_s` | 0.0 | Igual, por duración del turno. `0` = desactivado. Sin medir. |
+| `[vad] speculate_skip_while_user_speaks` | false | Retiene la pista especulativa mientras el carril del micrófono tiene voz. Sin medir. |
 
 En la llamada grabada desaparecieron tres de las once líneas del carril `mic` que el usuario nunca dijo (una
 fue "nos vemos en el próximo vídeo", inventada a partir de la voz lejana) y se conservaron todas

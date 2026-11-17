@@ -50,6 +50,13 @@ bleed_ratio = 2.0
 # depends on capture gain: far speech measured 400-950 and idle noise 50-125 on
 # two recorded calls, at one gain. Raise it if idle noise trips the rule.
 bleed_far_floor = 250
+# Gates on the hint that starts by itself when the other party pauses. All off:
+# without them every far-lane pause starts one, a backchannel ("mm-hm") included.
+# Which values pay for themselves has not been measured; try them on recorded
+# calls (docs/development/recording-protocol.md) before trusting any.
+speculate_min_words = 0
+speculate_min_turn_s = 0.0
+speculate_skip_while_user_speaks = false
 
 [llm]
 # "fake" returns canned text. "openai" talks to any OpenAI-compatible server:

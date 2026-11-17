@@ -426,8 +426,19 @@ messages carry the detail.
 - **Line 3, task 2 done:** `bench.replay_call --hints-url` generates real hints during the
   replay.
 - **A defect the audit missed:** D4's fix made `test_without_detectors...` flaky; fixed.
-- **Not done:** Line 3 tasks 1, 3 and 4 (recordings, scoring, tuning), Line 4 (latency
-  architecture, D6, D8 gating, D11), D12 beyond `far_floor` being configurable, D13 beyond
-  the documented security model, the docs deployment.
+- **Line 4: code done, not measured (2026-11-17).** D6: bleed gate and voice activity run in
+  the socket reader (`Core.admit`); the lane worker only recognizes (`Core.perform`). A
+  test with a stuck decode shows the end of a turn is seen while it runs. The final of a
+  turn is still emitted before a hint is built, so `hint.start` still waits for the decode
+  ahead of it: what this fixes is a stale detector and bleed gate and a late cancel, not
+  that wait; it shrinks only with the decode backlog. D8: three gates (`speculate_min_words`,
+  `speculate_min_turn_s`, `speculate_skip_while_user_speaks`), all off, because the values
+  must come from the evaluation set. D11: a full window is closed at the last phrase boundary
+  and the rest carried (needs segment start times; both backends give them), docstring
+  corrected; partial cost is bounded by `max_window_s`, not reduced. The "done when" (end of
+  turn to `hint.start` on the replay set, wasted generations per call) is not reported yet.
+- **Not done:** Line 3 tasks 1, 3 and 4 (recordings, scoring, tuning), the measurement that
+  closes Line 4, D12 beyond `far_floor` being configurable, D13 beyond the documented
+  security model, the docs deployment.
 - **Open and unexplained:** requests that stall for 15 to 17 s on the Mac mini, and LFM2
   2.6B hanging at load under llama.cpp (not under Ollama).

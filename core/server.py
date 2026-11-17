@@ -93,6 +93,15 @@ PREROLL_FRAMES = 15
 BACKLOG_WARN_FRAMES = 250
 
 
+@dataclass(frozen=True, slots=True)
+class _Work:
+    """One step for a lane's recognition worker: audio to hear, or a turn's end."""
+
+    kind: str  # "hear" or "end"
+    timestamp_us: int = 0
+    pcm: bytes = b""
+
+
 @dataclass
 class Core:
     profiles: ProfileStore
@@ -116,6 +125,15 @@ class Core:
     #: Most characters of transcript a hint carries (about 3k tokens). Past it the
     #: window moves forward; see ``hint_window``. 0 sends everything.
     transcript_budget_chars: int = 12000
+    #: Gates on a speculative hint (AUDIT D8). All off by default: which values
+    #: are worth it has to be measured on recorded calls, and a backchannel
+    #: ("mm-hm") starting a generation is a cost only that measurement can price.
+    #: A far turn shorter than this many words, or this many seconds, does not
+    #: start one; ``speculate_skip_while_user_speaks`` holds it back while the
+    #: mic lane is voiced. ``speculations_skipped`` counts what the gates stopped.
+    speculate_min_words: int = 0
+    speculate_min_turn_s: float = 0.0
+    speculate_skip_while_user_speaks: bool = False
     #: Monotonic seconds. Injectable so tests can move time without sleeping.
     clock: Callable[[], float] = time.monotonic
 
@@ -147,6 +165,8 @@ class Core:
     #: Finals of the live session, kept so a console that reconnects can be
     #: given them again, and the mode of the hint in flight for the same reason.
     _finals: list[Segment] = field(default_factory=list, init=False)
+    #: Speculative hints the D8 gates held back, since the core started.
+    speculations_skipped: int = field(default=0, init=False)
     _hint_mode: str | None = field(default=None, init=False)
     #: First transcript line a hint carries. See ``hint_window``.
     _window_start: int = field(default=0, init=False)
@@ -311,7 +331,7 @@ class Core:
         # websocket library stopped answering pings with it, and a recorded call
         # lost both lanes to a keepalive timeout while the model server was
         # merely behind.
-        pending: asyncio.Queue[tuple[int, bytes] | None] = asyncio.Queue()
+        pending: asyncio.Queue[_Work | None] = asyncio.Queue()
         worker = asyncio.create_task(self._recognize_lane(lane, pending))
         try:
             async for message in connection:
@@ -338,7 +358,17 @@ class Core:
                     continue
                 # Stamped here, on arrival, not when the worker gets to it: a
                 # backlog must not shift the audio's place on the timeline.
-                pending.put_nowait((self.stamp(lane), pcm))
+                # The bleed gate and voice activity run here too, on arrival
+                # (AUDIT D6): behind a slow decode they would judge frames
+                # that are already seconds old. Only what the recognizer
+                # should hear is queued.
+                try:
+                    for work in await self.admit(lane, pcm, self.stamp(lane)):
+                        pending.put_nowait(work)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:  # noqa: BLE001 - one bad frame must not end the lane
+                    log.exception("lane %s: audio admission failed", lane)
         except websockets.exceptions.ConnectionClosed:
             pass
         finally:
@@ -354,12 +384,11 @@ class Core:
             log.info("lane %s disconnected", lane)
 
     async def _recognize_lane(
-        self, lane: p.Lane, pending: asyncio.Queue[tuple[int, bytes] | None]
+        self, lane: p.Lane, pending: asyncio.Queue[_Work | None]
     ) -> None:
         """Work through one lane's queued audio, in order, until the sentinel."""
         warned = False
-        while (item := await pending.get()) is not None:
-            timestamp_us, pcm = item
+        while (work := await pending.get()) is not None:
             backlog = pending.qsize()
             if backlog > BACKLOG_WARN_FRAMES and not warned:
                 log.warning(
@@ -370,7 +399,7 @@ class Core:
             elif backlog < BACKLOG_WARN_FRAMES // 2:
                 warned = False
             try:
-                await self.route_audio(lane, pcm, timestamp_us)
+                await self.perform(lane, work)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 - one bad frame must not end the lane
@@ -398,6 +427,18 @@ class Core:
     async def route_audio(
         self, lane: p.Lane, pcm: bytes, timestamp_us: int | None = None
     ) -> None:
+        """Admit one frame and run whatever it asks of the recognizer, in line.
+
+        The socket reader does these in two stages (``admit`` on arrival,
+        ``perform`` in the lane's worker); this is both, for callers that have
+        no queue of their own, such as the replay tool and the tests.
+        """
+        if timestamp_us is None:
+            timestamp_us = self.stamp(lane)
+        for work in await self.admit(lane, pcm, timestamp_us):
+            await self.perform(lane, work)
+
+    async def admit(self, lane: p.Lane, pcm: bytes, timestamp_us: int) -> list[_Work]:
         """Decide what the recognizer hears, and when a turn is over.
 
         Voice activity detection runs first and gates recognition. Without it
@@ -416,12 +457,15 @@ class Core:
 
         Timestamps are the session timeline (see ``stamp``), not the client's:
         segment times must keep counting through the silence that was never
-        decoded, and through gaps. A caller that already stamped the frame
-        passes it in.
-        """
-        if timestamp_us is None:
-            timestamp_us = self.stamp(lane)
+        decoded, and through gaps.
 
+        Nothing here waits for the recognizer. What it should do comes back as
+        work, to be performed in order: audio to hear, and the end of a turn,
+        which closes the utterance and only then lets a hint start (the hint
+        must be written against a transcript that already holds the sentence it
+        answers, so that step has to wait for the decode ahead of it). The
+        other party starting to talk again is acted on at once.
+        """
         if self.bleed is not None:
             if lane == "far":
                 self.bleed.far(pcm)
@@ -430,26 +474,34 @@ class Core:
 
         detector = (self.detectors or {}).get(lane)
         if detector is None:
-            await self.hear(lane, timestamp_us, pcm)
-            return
+            return [_Work("hear", timestamp_us, pcm)]
 
+        work: list[_Work] = []
         events = detector.push(pcm)
         preroll = self._preroll.setdefault(lane, deque(maxlen=PREROLL_FRAMES))
         if VadEvent.SPEECH_START in events:
-            for held_us, held in preroll:
-                await self.hear(lane, held_us, held)
+            work.extend(_Work("hear", held_us, held) for held_us, held in preroll)
             preroll.clear()
         if detector.speaking:
-            await self.hear(lane, timestamp_us, pcm)
+            work.append(_Work("hear", timestamp_us, pcm))
         else:
             preroll.append((timestamp_us, pcm))
         if VadEvent.SPEECH_END in events:
-            # Closed here for every lane, and before anything reacts to the
-            # turn ending: a speculative hint must be written against a
-            # transcript that already holds the sentence it answers.
-            for segment in await self.flush_lane(lane):
-                await self.emit_segment(segment)
-        await self.react_to_voice(lane, events)
+            work.append(_Work("end"))
+        if VadEvent.SPEECH_START in events:
+            await self.react_to_voice(lane, [VadEvent.SPEECH_START])
+        return work
+
+    async def perform(self, lane: p.Lane, work: _Work) -> None:
+        if work.kind == "hear":
+            await self.hear(lane, work.timestamp_us, work.pcm)
+            return
+        # Closed here for every lane, and before anything reacts to the turn
+        # ending: a speculative hint must be written against a transcript that
+        # already holds the sentence it answers.
+        for segment in await self.flush_lane(lane):
+            await self.emit_segment(segment)
+        await self.react_to_voice(lane, [VadEvent.SPEECH_END])
 
     async def hear(self, lane: p.Lane, timestamp_us: int, pcm: bytes) -> None:
         for segment in await self.recognize(lane, timestamp_us, pcm):
@@ -808,7 +860,25 @@ class Core:
             await self.emit_segment(segment)
         if not self.transcript:
             return
+        if self.speculation_gated():
+            self.speculations_skipped += 1
+            return
         await self.start_hint(self.state.mode or "conversational", "speculative")
+
+    def speculation_gated(self) -> bool:
+        """Whether the turn that just ended is too slight to answer (AUDIT D8)."""
+        if self.speculate_skip_while_user_speaks:
+            mic = (self.detectors or {}).get("mic")
+            if mic is not None and mic.speaking:
+                return True
+        if not (self.speculate_min_words or self.speculate_min_turn_s):
+            return False
+        turn = next((s for s in reversed(self._finals) if s.lane == "far"), None)
+        if turn is None:
+            return False
+        if len(turn.text.split()) < self.speculate_min_words:
+            return True
+        return turn.dur < self.speculate_min_turn_s
 
     # -- hints --------------------------------------------------------------- #
 

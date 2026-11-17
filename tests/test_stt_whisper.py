@@ -28,6 +28,7 @@ SILENCE = bytes(FRAME_BYTES)
 class FakeSegment:
     text: str
     end: float
+    start: float | None = None
 
 
 class FakeModel:
@@ -146,6 +147,51 @@ class TestFinals:
         )
         segments = feed_seconds(instance, "far", 3.0)
         assert [s.final for s in segments] == [True]
+
+    def test_a_full_window_is_cut_at_the_last_phrase_not_through_it(self) -> None:
+        # AUDIT D11: 4 s of unbroken speech, the model hears two phrases and the
+        # second is still being said at the edge. The first is closed; the
+        # second stays in the window and is heard whole next time.
+        model = FakeModel(
+            [
+                FakeSegment("first part", start=0.0, end=2.5),
+                FakeSegment("and the second", start=2.6, end=4.0),
+            ]
+        )
+        instance = recognizer(
+            model, partial_interval_s=100.0, max_window_s=4.0, silence_s=0.6
+        )
+        segments = feed_seconds(instance, "far", 4.0)
+        assert [(s.text, s.final) for s in segments] == [("first part", True)]
+        assert segments[0].dur == pytest.approx(2.6, abs=0.03)
+        carried = instance._lanes["far"]
+        assert carried.frames * FRAME_MS / 1000 == pytest.approx(1.4, abs=0.03)
+        assert carried.started_at_s == pytest.approx(2.6, abs=0.03)
+        # And what is said next continues from there rather than from zero.
+        model.segments = [FakeSegment("and the second part", start=0.0, end=2.0)]
+        closed = instance.flush("far")
+        assert closed[0].text == "and the second part"
+        assert closed[0].t == pytest.approx(2.6, abs=0.03)
+
+    def test_one_unbroken_phrase_is_still_cut_where_it_stands(self) -> None:
+        model = FakeModel([FakeSegment("one long phrase", start=0.0, end=3.0)])
+        instance = recognizer(
+            model, partial_interval_s=100.0, max_window_s=3.0, silence_s=0.6
+        )
+        segments = feed_seconds(instance, "far", 3.0)
+        assert [s.text for s in segments] == ["one long phrase"]
+        assert instance._lanes["far"].frames == 0
+
+    def test_a_backend_without_start_times_keeps_the_hard_cut(self) -> None:
+        model = FakeModel(
+            [FakeSegment("a", end=1.0), FakeSegment("b", end=3.0)]
+        )
+        instance = recognizer(
+            model, partial_interval_s=100.0, max_window_s=3.0, silence_s=0.6
+        )
+        segments = feed_seconds(instance, "far", 3.0)
+        assert [s.text for s in segments] == ["a b"]
+        assert instance._lanes["far"].frames == 0
 
     def test_sequence_numbers_increment_per_lane(self) -> None:
         model = FakeModel([FakeSegment("one", end=0.2)])
