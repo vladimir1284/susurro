@@ -58,7 +58,7 @@ The plumbing is built and tested. The measurements are not taken.
 | Voice activity, end-of-turn, speculative hints | Done — `core/vad.py`. Found broken on real speech (the model was missing its 64-sample context) and fixed; exercised on one recorded two-lane Spanish call, where speculative hints fired live. One call is not a variety of voices or lines. |
 | Session recording and export | Done — `core/session/history.py`. **Off by default.** |
 | M0 benchmark harness | Done — `bench/` |
-| **M0 measurements** | **Not taken.** A recorded call has been replayed against whisper.cpp `small` on the Mac mini (`python -m bench.replay_call`), which is not the M0 benchmark. The Mac's speed varied by about 3x over an evening. |
+| **M0 measurements** | **Partial.** Language-model half measured on the Mac mini on 2026-11-16 (llama.cpp, three small models, one run each: [`bench/results/2026-11-16-mac-llamacpp.md`](bench/results/2026-11-16-mac-llamacpp.md)); an overnight series of repeated rounds was started afterwards and is not yet written up. Speech is timed through whisper.cpp (about 0.05 s of compute per second of audio on one clip). The gate is not decided. The Mac's speed varied by about 3x over an evening. |
 
 Everything can run without models: the core ships fake speech and hint backends, and the
 capture client can replay a WAV instead of opening a device. That is how the console, the

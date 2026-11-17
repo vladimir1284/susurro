@@ -403,3 +403,31 @@ stops at the point named.
    to the wire protocol or a backend interface that this audit did not already specify.
 8. **Verify before trusting this audit.** Items marked *read* or *inferred* are not
    proven. If one turns out to be wrong, correct this file in the same commit.
+
+## Progress since this audit (added 2026-11-16, later the same day)
+
+Not part of the audit as written; appended so the next agent does not redo it. Commit
+messages carry the detail.
+
+- **Line 1: done.** D1 to D5 fixed, each with a test seen failing first. D1 is also
+  confirmed live on llama.cpp: after the old prefill the first hint cost 88 to 94% of a cold
+  one, after the new one 0.2 to 0.4 s (`bench/results/2026-11-16-mac-llamacpp.md`). The
+  operator chose to move the mode instruction after the transcript; that prompt layout was
+  never evaluated for hint quality. The audit's "reset the recognizer's lag origin on
+  reconnect" proved unnecessary once frames are stamped on one session timeline.
+- **Line 5: D7, D9, D10 and the soak test done.** The soak (`tests/test_soak.py`) was
+  checked by mutation. D7's budget (`[llm] transcript_budget_chars`, 12000) is untuned.
+- **Line 6: items 1 to 4 and 6 done**; `WORKPLAN.md` replaced by a pointer (operator said
+  yes). The `docs` workflow is left failing: the operator supplies the Cloudflare token.
+- **Line 2: prepared and partly run.** Runbook, the D1 bench case, a whisper.cpp speed
+  probe, and an unattended driver (`bench/overnight.py`) exist. The first real run found
+  two defects in `bench/` itself (a fake memory figure that made the memory gate pass on
+  nothing; "cold" prompts that repeated between runs and hit the server's cache), both fixed.
+- **Line 3, task 2 done:** `bench.replay_call --hints-url` generates real hints during the
+  replay.
+- **A defect the audit missed:** D4's fix made `test_without_detectors...` flaky; fixed.
+- **Not done:** Line 3 tasks 1, 3 and 4 (recordings, scoring, tuning), Line 4 (latency
+  architecture, D6, D8 gating, D11), D12 beyond `far_floor` being configurable, D13 beyond
+  the documented security model, the docs deployment.
+- **Open and unexplained:** requests that stall for 15 to 17 s on the Mac mini, and LFM2
+  2.6B hanging at load under llama.cpp (not under Ollama).
