@@ -125,6 +125,15 @@ class Core:
     #: Most characters of transcript a hint carries (about 3k tokens). Past it the
     #: window moves forward; see ``hint_window``. 0 sends everything.
     transcript_budget_chars: int = 12000
+    #: Gates on a speculative hint (AUDIT D8). All off by default: which values
+    #: are worth it has to be measured on recorded calls, and a backchannel
+    #: ("mm-hm") starting a generation is a cost only that measurement can price.
+    #: A far turn shorter than this many words, or this many seconds, does not
+    #: start one; ``speculate_skip_while_user_speaks`` holds it back while the
+    #: mic lane is voiced. ``speculations_skipped`` counts what the gates stopped.
+    speculate_min_words: int = 0
+    speculate_min_turn_s: float = 0.0
+    speculate_skip_while_user_speaks: bool = False
     #: Monotonic seconds. Injectable so tests can move time without sleeping.
     clock: Callable[[], float] = time.monotonic
 
@@ -156,6 +165,8 @@ class Core:
     #: Finals of the live session, kept so a console that reconnects can be
     #: given them again, and the mode of the hint in flight for the same reason.
     _finals: list[Segment] = field(default_factory=list, init=False)
+    #: Speculative hints the D8 gates held back, since the core started.
+    speculations_skipped: int = field(default=0, init=False)
     _hint_mode: str | None = field(default=None, init=False)
     #: First transcript line a hint carries. See ``hint_window``.
     _window_start: int = field(default=0, init=False)
@@ -849,7 +860,25 @@ class Core:
             await self.emit_segment(segment)
         if not self.transcript:
             return
+        if self.speculation_gated():
+            self.speculations_skipped += 1
+            return
         await self.start_hint(self.state.mode or "conversational", "speculative")
+
+    def speculation_gated(self) -> bool:
+        """Whether the turn that just ended is too slight to answer (AUDIT D8)."""
+        if self.speculate_skip_while_user_speaks:
+            mic = (self.detectors or {}).get("mic")
+            if mic is not None and mic.speaking:
+                return True
+        if not (self.speculate_min_words or self.speculate_min_turn_s):
+            return False
+        turn = next((s for s in reversed(self._finals) if s.lane == "far"), None)
+        if turn is None:
+            return False
+        if len(turn.text.split()) < self.speculate_min_words:
+            return True
+        return turn.dur < self.speculate_min_turn_s
 
     # -- hints --------------------------------------------------------------- #
 

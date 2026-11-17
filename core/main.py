@@ -173,6 +173,11 @@ def main(argv: list[str] | None = None) -> int:
         transcript_budget_chars=int(
             config.get("llm", {}).get("transcript_budget_chars", 12000)
         ),
+        speculate_min_words=int(config.get("vad", {}).get("speculate_min_words", 0)),
+        speculate_min_turn_s=float(config.get("vad", {}).get("speculate_min_turn_s", 0.0)),
+        speculate_skip_while_user_speaks=bool(
+            config.get("vad", {}).get("speculate_skip_while_user_speaks", False)
+        ),
     )
 
     url = f"http://{settings['host']}:{settings['port']}/?token={token}"

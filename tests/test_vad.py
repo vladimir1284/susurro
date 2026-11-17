@@ -594,3 +594,48 @@ class TestDetectionDoesNotWaitForRecognition:
             await plain.route_audio("mic", quiet(20))
         assert recognizer.fed
         assert recognizer.flushed == ["mic"]
+
+
+class TestSpeculationGates:
+    """AUDIT D8: a far-lane pause need not always start a generation."""
+
+    def make(self, **gates) -> Core:
+        return Core(
+            profiles=ProfileStore(FIXTURES),
+            recognizer=RecordingRecognizer(),
+            generator=CannedHintGenerator(),
+            token=TOKEN,
+            detectors=build_detectors({"backend": "energy"}),
+            **gates,
+        )
+
+    @staticmethod
+    def hear(core: Core, text: str, dur: float):
+        from core.stt.base import Segment
+
+        core._finals.append(Segment(lane="far", text=text, t=0.0, final=True, dur=dur))
+        core.transcript.append(f"them: {text}")
+
+    def test_everything_passes_with_the_gates_off(self) -> None:
+        core = self.make()
+        self.hear(core, "mm-hm", 0.3)
+        assert core.speculation_gated() is False
+
+    def test_a_short_turn_in_words_is_held_back(self) -> None:
+        core = self.make(speculate_min_words=3)
+        self.hear(core, "mm-hm", 1.0)
+        assert core.speculation_gated() is True
+        self.hear(core, "so why did you leave", 1.0)
+        assert core.speculation_gated() is False
+
+    def test_a_short_turn_in_seconds_is_held_back(self) -> None:
+        core = self.make(speculate_min_turn_s=1.0)
+        self.hear(core, "yes right", 0.4)
+        assert core.speculation_gated() is True
+
+    def test_the_user_speaking_holds_it_back(self) -> None:
+        core = self.make(speculate_skip_while_user_speaks=True)
+        self.hear(core, "so why did you leave", 2.0)
+        assert core.speculation_gated() is False
+        core.detectors["mic"]._hysteresis.speaking = True  # type: ignore[index,attr-defined]
+        assert core.speculation_gated() is True

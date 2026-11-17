@@ -87,6 +87,9 @@ scale together with the speaker volume.
 |---|---|---|
 | `[vad] bleed_ratio` | 2.0 | Mic frames below this multiple of the far lane's level (held 0.6 s) are silenced. `0` turns it off. |
 | `[vad] bleed_far_floor` | 250 | Raw RMS under which the far lane counts as silent and the rule stands down. Depends on capture gain; tuned on two calls. |
+| `[vad] speculate_min_words` | 0 | A far turn of fewer words than this does not start a speculative hint. `0` = off. Unmeasured. |
+| `[vad] speculate_min_turn_s` | 0.0 | Same, by duration of the turn. `0` = off. Unmeasured. |
+| `[vad] speculate_skip_while_user_speaks` | false | Hold a speculative hint back while the mic lane is voiced. Unmeasured. |
 
 On the recorded call, three lines of eleven on the mic lane that the user never said disappeared (one of them
 "nos vemos en el próximo vídeo", invented from the far voice) and every line the user spoke
