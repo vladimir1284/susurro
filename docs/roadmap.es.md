@@ -10,7 +10,7 @@ M0 a M3 juntos son el producto mínimo real. Todo lo que viene después es incre
 
 ## M0 — Benchmark
 
-**Estado: arnés construido, mediciones sin tomar.**
+**Estado: arnés construido. Mitad del modelo de lenguaje medida el 2026-11-16 (tres modelos, llama.cpp, una ejecución cada uno): ver `bench/results/2026-11-16-mac-llamacpp.md`. Voz sin medir; puerta sin decidir.**
 
 **Medio día. No se construye nada más hasta terminarlo.**
 

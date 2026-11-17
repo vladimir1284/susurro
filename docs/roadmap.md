@@ -10,7 +10,7 @@ M0 through M3 together are the minimum real product. Everything after is increme
 
 ## M0 — Benchmark
 
-**Status: harness built, measurements not taken.**
+**Status: harness built. Language-model half measured on 2026-11-16 (three models, llama.cpp, one run each): see `bench/results/2026-11-16-mac-llamacpp.md`. Speech not measured; gate not decided.**
 
 **Half a day. Nothing else gets built until this is done.**
 

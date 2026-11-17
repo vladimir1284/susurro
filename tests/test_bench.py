@@ -326,3 +326,70 @@ class TestFirstHintAfterPrefill:
         assert payload["messages"][0]["content"].startswith(
             SYSTEM_PROMPTS[("es", "business")]
         )
+
+
+class TestMeasuringAServerElsewhere:
+    """The model server usually runs on another machine (the Mac mini, reached
+    through a tunnel). The first real run recorded this process's own 0.04 GB as
+    the server's resident memory, which made the memory gate pass on nothing."""
+
+    @staticmethod
+    def run(tmp_path: Path, *extra: str) -> dict:
+        out = tmp_path / "r.json"
+        main(["--skip-llm", "--skip-stt", "--out", str(out), *extra])
+        return json.loads(out.read_text())
+
+    def test_no_server_pid_means_no_memory_figure(self, tmp_path: Path) -> None:
+        written = self.run(tmp_path)
+        assert "resident_memory_gb" not in written["llm"]
+        assert written["gates"]["resident_memory_gb"]["value"] is None
+        assert written["gates"]["resident_memory_gb"]["passed"] is False
+
+    def test_a_memory_figure_measured_by_hand_is_recorded_as_such(
+        self, tmp_path: Path
+    ) -> None:
+        written = self.run(tmp_path, "--server-memory-gb", "2.5")
+        assert written["llm"]["resident_memory_gb"] == 2.5
+        assert any("by hand" in note for note in written["notes"])
+
+    def test_the_server_host_is_recorded_in_place_of_this_machine(
+        self, tmp_path: Path
+    ) -> None:
+        written = self.run(tmp_path, "--server-host", "Mac mini M4 16 GB")
+        assert written["machine"]["server_host"] == "Mac mini M4 16 GB"
+        # This process's machine is the client, not what was measured.
+        assert written["machine"]["accelerator"] != "none"
+
+
+class TestColdMeansColdAcrossRuns:
+    """A server keeps prompts it has seen. Markers that repeat from one run to
+    the next make 'cold' a cache hit: the first real run measured a cold first
+    hint at 0.1 s the second time, against 1.3 s the first."""
+
+    async def test_two_runs_never_share_a_cold_prompt(self) -> None:
+        seen: list[set[str]] = []
+        for _ in range(2):
+            markers: set[str] = set()
+
+            def handler(request: httpx.Request, markers: set[str] = markers) -> httpx.Response:
+                payload = json.loads(request.content)
+                markers.add(payload["messages"][0]["content"][:60])
+                return httpx.Response(
+                    200, content=b'data: {"choices":[{"delta":{"content":"x"}}]}\n\n'
+                )
+
+            bench = LlmBench(base_url="http://model.test", model="m", repeats=2)
+            client = httpx.AsyncClient(
+                transport=httpx.MockTransport(handler), base_url="http://model.test"
+            )
+            # The cold-prefill prompt, built exactly as run() builds it.
+            for index in range(2):
+                await bench.ttft(client, bench.cold_system(index, 10), "Go.")
+            await client.aclose()
+            seen.append(markers)
+        assert seen[0].isdisjoint(seen[1])
+
+    def test_the_d1_preamble_differs_between_runs(self) -> None:
+        a = LlmBench(base_url="http://x", model="m")
+        b = LlmBench(base_url="http://x", model="m")
+        assert a.d1_preamble("cold", 0) != b.d1_preamble("cold", 0)

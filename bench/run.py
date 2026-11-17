@@ -45,7 +45,8 @@ import argparse
 import asyncio
 import sys
 import time
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
@@ -111,6 +112,17 @@ class LlmBench:
     base_url: str
     model: str
     repeats: int = 5
+    #: Unique to this run. Every "cold" prompt carries it, so a server that kept
+    #: the prompts of an earlier run (llama.cpp does) cannot answer them from its
+    #: cache. Same-looking markers across runs made a second run's cold numbers
+    #: warm.
+    nonce: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
+
+    def cold_system(self, index: int, tokens: int) -> str:
+        return f"run {self.nonce}-{index}\n" + context_of(tokens)
+
+    def d1_preamble(self, variant: str, index: int) -> str:
+        return f"## BACKGROUND (d1 {variant} {self.nonce}-{index})\n" + context_of(2000)
 
     def client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(base_url=self.base_url.rstrip("/"), timeout=300.0)
@@ -170,7 +182,7 @@ class LlmBench:
         different system prompt: a server remembering the last run would make
         every variant look prefilled.
         """
-        preamble = f"## BACKGROUND (d1 {variant} {index})\n" + context_of(2000)
+        preamble = self.d1_preamble(variant, index)
         transcript = ("them: " + context_of(100),)
         context = HintContext(mode=mode, language=language, transcript=transcript)  # type: ignore[arg-type]
         generator = OpenAICompatGenerator(
@@ -244,7 +256,7 @@ class LlmBench:
                     # A different system prompt every time, so the server's
                     # cache cannot help. A "cold" number measured against a warm
                     # cache is the easiest way to benchmark nothing at all.
-                    system = f"run {index}\n" + context_of(tokens)
+                    system = self.cold_system(index, tokens)
                     samples.add(await self.ttft(client, system, "Go."))
                 report.llm[samples.name] = samples.summary()
 
@@ -352,6 +364,18 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help="pid of the model server, to record its peak resident memory",
     )
+    parser.add_argument(
+        "--server-memory-gb",
+        type=float,
+        help="peak resident memory of the model server, measured by hand on the "
+        "machine it runs on (e.g. `ps -o rss`); for a server this process cannot "
+        "see",
+    )
+    parser.add_argument(
+        "--server-host",
+        help="what the model server runs on, e.g. 'Mac mini M4 16 GB', when that is "
+        "not this machine. Recorded in place of this machine's accelerator.",
+    )
     parser.add_argument("--repeats", type=int, default=5)
     parser.add_argument("--skip-llm", action="store_true")
     parser.add_argument("--skip-stt", action="store_true")
@@ -377,6 +401,19 @@ def default_out(label: str) -> Path:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     report = Report(machine=machine())
+    if args.server_host:
+        # What was measured is the server's machine, reached over the network.
+        # This process only timed the requests; its own hardware says nothing.
+        report.machine["client"] = {
+            "machine": report.machine.get("machine"),
+            "cpu_count": report.machine.get("cpu_count"),
+        }
+        report.machine["server_host"] = args.server_host
+        report.machine["accelerator"] = f"remote: {args.server_host}"
+        report.notes.append(
+            f"measured through the network against {args.server_host}; times include "
+            "the round trip (tunnel) and the client's own scheduling"
+        )
     if args.label:
         report.notes.append(f"label: {args.label}")
 
@@ -413,13 +450,22 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"error: language model benchmark failed: {exc}", file=sys.stderr)
                 return 3
 
-        memory = peak_rss_gb(args.server_pid)
+        # Only with a pid: without one, peak_rss_gb reports this process's own
+        # memory, and recording that as the model server's let the memory gate
+        # pass on a number about nothing.
+        memory = peak_rss_gb(args.server_pid) if args.server_pid is not None else None
         if memory is not None:
             report.llm["resident_memory_gb"] = memory
-        elif args.server_pid is None:
+        elif args.server_memory_gb is not None:
+            report.llm["resident_memory_gb"] = args.server_memory_gb
             report.notes.append(
-                "Peak memory not measured: pass --server-pid so the model server's "
-                "resident memory is recorded rather than this process's."
+                "resident_memory_gb was measured by hand on the server's machine, "
+                "not by this benchmark"
+            )
+        else:
+            report.notes.append(
+                "Peak memory not measured: pass --server-pid (same machine) or "
+                "--server-memory-gb (measured by hand elsewhere)."
             )
 
     out = args.out or default_out(args.label)
