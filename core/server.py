@@ -664,7 +664,7 @@ class Core:
         # come back -- but it is reported rather than left for the user to
         # discover mid-call.
         try:
-            await self.generator.prefill(profile.preamble())
+            await self.generator.prefill(profile.preamble(), profile.language)
             self._llm_status = "ready"
         except Exception as exc:  # noqa: BLE001 - surfaced to the console
             self._llm_status = "unavailable"

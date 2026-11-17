@@ -17,6 +17,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 from core.llm.base import HintContext
+from core.protocol import Language
 
 DEFAULT_HINTS: dict[str, tuple[str, ...]] = {
     "conversational": (
@@ -54,11 +55,13 @@ class CannedHintGenerator:
 
     prefill_count: int = field(default=0, init=False)
     prefilled: str | None = field(default=None, init=False)
+    prefilled_language: str | None = field(default=None, init=False)
     contexts: list[HintContext] = field(default_factory=list, init=False)
 
-    async def prefill(self, preamble: str) -> None:
+    async def prefill(self, preamble: str, language: Language) -> None:
         self.prefill_count += 1
         self.prefilled = preamble
+        self.prefilled_language = language
 
     async def stream(self, context: HintContext) -> AsyncIterator[str]:
         self.contexts.append(context)

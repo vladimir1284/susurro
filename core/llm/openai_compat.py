@@ -7,9 +7,11 @@ benchmarking in M0 and the choice between them stays a configuration change.
 The important part is not the HTTP. It is that the prompt is built
 **append-only**, so the server's prefix cache can be reused:
 
-* The preamble goes in a system message, built once at ``prefill`` and never
-  rebuilt.
-* Each hint appends the transcript and a short instruction after it.
+* The system message depends on the session's language and its preamble, and on
+  nothing else: not the mode, which a manual hint may change per request. It is
+  built once at ``prefill`` and never rebuilt, so what ``prefill`` sends is
+  exactly the start of what every hint sends.
+* Each hint appends the transcript, then the mode's instruction, after it.
 * Nothing before the append point is ever rewritten.
 
 ``prefill`` sends the preamble with ``max_tokens=0``. That processes the static
@@ -34,7 +36,7 @@ from dataclasses import dataclass, field
 import httpx
 
 from core.llm.base import HintContext
-from core.protocol import Mode
+from core.protocol import Language
 
 log = logging.getLogger("susurro.llm")
 
@@ -46,6 +48,26 @@ MAX_TOKENS: dict[str, int] = {
     "business": 80,
 }
 
+#: The system message's own text: language only. Everything that differs by mode
+#: lives in ``SYSTEM_PROMPTS`` and goes after the transcript, so that a hint in
+#: a different mode does not change the cached prefix.
+BASE_PROMPTS: dict[str, str] = {
+    "en": (
+        "You help someone during a live conversation. The transcript labels "
+        "each line 'them' (the other party) or 'me' (the person reading you). "
+        "They read you while making eye contact with someone else, so be brief. "
+        "The instruction after the transcript says what kind of answer is wanted."
+    ),
+    "es": (
+        "Ayudas a alguien durante una conversación en vivo. La transcripción "
+        "marca cada línea como 'them' (la otra parte) o 'me' (quien te lee). "
+        "Te leen mientras miran a los ojos a otra persona, así que sé breve. "
+        "La instrucción tras la transcripción dice qué tipo de respuesta se "
+        "quiere."
+    ),
+}
+
+#: Per mode: appended after the transcript on every hint.
 SYSTEM_PROMPTS: dict[tuple[str, str], str] = {
     ("en", "conversational"): (
         "You help someone during a live conversation. Reply with at most four "
@@ -106,9 +128,17 @@ LAST_THING: dict[str, str] = {
 
 
 def system_prompt(language: str, mode: str) -> str:
+    """The mode's instruction, which goes after the transcript."""
     return SYSTEM_PROMPTS.get(
         (language, mode), SYSTEM_PROMPTS[("en", "conversational")]
     )
+
+
+def system_message(language: str, preamble: str) -> dict:
+    """The first message of every request, prefill and hint alike."""
+    base = BASE_PROMPTS.get(language, BASE_PROMPTS["en"])
+    content = f"{base}\n\n{preamble}" if preamble else base
+    return {"role": "system", "content": content}
 
 
 @dataclass
@@ -146,36 +176,28 @@ class OpenAICompatGenerator:
             await self._client.aclose()
             self._client = None
 
-    def messages(self, context: HintContext | None, preamble: str) -> list[dict]:
-        """Build the request. Order is the contract, not a style choice.
+    def messages(self, context: HintContext, preamble: str) -> list[dict]:
+        """Build a hint request. Order is the contract, not a style choice.
 
         System message first and unchanged for the whole session, then the
-        transcript, then the instruction. Anything that reordered these would
-        move the cache boundary and cost a full prefill.
+        transcript, then the mode's instruction. Anything that reordered these
+        would move the cache boundary and cost a full prefill. The next hint's
+        transcript replaces the suffix after the old one's end, which is the
+        only part that was ever going to change.
         """
-        language = context.language if context else "en"
-        mode: Mode = context.mode if context else "conversational"
-        system = f"{system_prompt(language, mode)}\n\n{preamble}" if preamble else (
-            system_prompt(language, mode)
-        )
-        messages = [{"role": "system", "content": system}]
-        if context is None:
-            return messages
-        if context.transcript:
-            body = "\n".join(context.transcript)
-            if mode in LAST_THING_MODES:
-                body += "\n\n" + LAST_THING.get(language, LAST_THING["en"])
-        else:
-            body = "(no speech yet)"
-        messages.append({"role": "user", "content": body})
-        return messages
+        language, mode = context.language, context.mode
+        body = "\n".join(context.transcript) if context.transcript else "(no speech yet)"
+        body += "\n\n" + system_prompt(language, mode)
+        if context.transcript and mode in LAST_THING_MODES:
+            body += "\n" + LAST_THING.get(language, LAST_THING["en"])
+        return [system_message(language, preamble), {"role": "user", "content": body}]
 
-    async def prefill(self, preamble: str) -> None:
+    async def prefill(self, preamble: str, language: Language) -> None:
         self.preamble = preamble
         self.prefill_count += 1
         payload = {
             "model": self.model,
-            "messages": self.messages(None, preamble),
+            "messages": [system_message(language, preamble)],
             "max_tokens": 0,
             "stream": False,
         }

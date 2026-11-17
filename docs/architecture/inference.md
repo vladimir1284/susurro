@@ -60,6 +60,10 @@ tokens invalidates the cache from that point forward and reintroduces the full p
 cost. Concretely:
 
 - Static context goes first and never changes mid-session.
+- What `prefill` sends is exactly the start of what every hint sends: the system message
+  depends on the session's language and its preamble, and on nothing else. The mode's
+  instruction goes **after** the transcript, so a manual hint in a different mode does not
+  change the cached prefix. A test checks this for every language and mode.
 - Transcript lines are appended, never edited — which is why only
   `transcript.final` enters the context, never `transcript.partial`.
 - Context overflow is handled by starting a new cache branch at a segment boundary, not

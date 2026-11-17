@@ -362,6 +362,7 @@ class TestHints:
             await drain(console, "hint.end")
         assert core.generator.prefill_count == 1
         assert core.generator.prefilled.startswith("## BACKGROUND")
+        assert core.generator.prefilled_language == "en"
         await console.close()
 
     async def test_a_hint_sees_the_committed_transcript(
@@ -1336,7 +1337,7 @@ class TestModelServerStatus:
         prefilled = None
         contexts: list = []
 
-        async def prefill(self, preamble: str) -> None:
+        async def prefill(self, preamble: str, language: str) -> None:
             raise ConnectionError("connection refused")
 
         async def stream(self, context):

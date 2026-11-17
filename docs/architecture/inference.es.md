@@ -63,6 +63,10 @@ reescriba tokens anteriores invalida la caché desde ese punto y reintroduce el 
 completo de prefill. En concreto:
 
 - El contexto estático va primero y no cambia a mitad de sesión.
+- Lo que envía `prefill` es exactamente el comienzo de lo que envía cada sugerencia: el
+  mensaje de sistema depende del idioma de la sesión y de su preámbulo, y de nada más. La
+  instrucción del modo va **después** de la transcripción, así que una sugerencia manual en
+  otro modo no cambia el prefijo en caché. Un test lo comprueba para cada idioma y modo.
 - Las líneas de transcripción se anexan, nunca se editan — por eso solo entra
   `transcript.final` en el contexto, nunca `transcript.partial`.
 - El desbordamiento de contexto se maneja abriendo una rama nueva de caché en una frontera

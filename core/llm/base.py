@@ -7,8 +7,10 @@ only pays for the new transcript lines.
 
 Hence two separate calls rather than one:
 
-``prefill(preamble)``
-    Once, at ``session.start``. Expensive. Its KV cache is retained.
+``prefill(preamble, language)``
+    Once, at ``session.start``. Expensive. Its KV cache is retained. What it
+    processes must be exactly the start of what every ``stream`` call sends, in
+    that session's language: a prefix cache matches from the first token.
 ``stream(context)``
     Per hint. Appends the transcript delta and generates.
 
@@ -42,8 +44,13 @@ class HintContext:
 
 @runtime_checkable
 class HintGenerator(Protocol):
-    async def prefill(self, preamble: str) -> None:
-        """Process the static context once and keep its cache."""
+    async def prefill(self, preamble: str, language: Language) -> None:
+        """Process the static context once and keep its cache.
+
+        ``language`` is the session's. The mode is deliberately not a
+        parameter: a hint may ask for a different mode than the session's, so
+        nothing mode-specific can be part of the cached prefix.
+        """
         ...
 
     def stream(self, context: HintContext) -> AsyncIterator[str]:
