@@ -565,13 +565,13 @@ class TestReplayStampsAudioTime:
         monkeypatch.setattr(replay_module, "build_detectors", lambda config: None)
 
         seen: dict[str, list[int | None]] = {"mic": [], "far": []}
-        original = replay_module.Core.route_audio
+        original = replay_module.Core.admit
 
-        async def spy(self, lane, pcm, timestamp_us=None):
+        async def spy(self, lane, pcm, timestamp_us):
             seen[lane].append(timestamp_us)
-            await original(self, lane, pcm, timestamp_us)
+            return await original(self, lane, pcm, timestamp_us)
 
-        monkeypatch.setattr(replay_module.Core, "route_audio", spy)
+        monkeypatch.setattr(replay_module.Core, "admit", spy)
         await replay_module.replay(
             ScriptedRecognizer(script=[]), tmp_path, 0.0, 1.0
         )

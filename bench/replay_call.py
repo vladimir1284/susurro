@@ -123,6 +123,10 @@ class Replay:
     #: Per lane, the most the lane fell behind the clock while feeding.
     worst_backlog_s: dict[str, float] = field(default_factory=lambda: {"mic": 0.0, "far": 0.0})
     hints: HintStats | None = None
+    #: Per speculative hint: seconds from the audio frame at which the other
+    #: party's turn was noticed to the hint starting (AUDIT line 4). It holds
+    #: the detector's own delay, the recognition backlog and the flush.
+    end_to_start_s: list[float] = field(default_factory=list)
 
     def lag(self) -> list[float]:
         return [f["lag_s"] for f in self.finals]
@@ -194,7 +198,52 @@ async def replay(
 
     core.emit_segment = record
 
+    # Audio time at which each far turn end was noticed, and when hints began.
+    noticed: list[float] = []
+    current_ts = {"mic": 0, "far": 0}
+    queued = hasattr(core, "admit")  # cores from before AUDIT D6 have none
+    if queued:
+        original_admit = core.admit
+
+        async def admit(lane, pcm, timestamp_us):
+            work = await original_admit(lane, pcm, timestamp_us)
+            if lane == "far" and any(item.kind == "end" for item in work):
+                noticed.append(timestamp_us / 1_000_000)
+            return work
+
+        core.admit = admit  # type: ignore[method-assign]
+    else:
+        original_react = core.react_to_voice
+
+        async def react(lane, events):
+            if lane == "far" and any(str(e) == "speech_end" for e in events):
+                noticed.append(current_ts["far"] / 1_000_000)
+            await original_react(lane, events)
+
+        core.react_to_voice = react  # type: ignore[method-assign]
+    if hints:
+        original_observe = stats.observe
+
+        def observe(message: str) -> None:
+            if '"hint.start"' in message and '"speculative"' in message and noticed:
+                result.end_to_start_s.append(
+                    round(time.monotonic() - origin - noticed.pop(), 2)
+                )
+            original_observe(message)
+
+        stats.observe = observe  # type: ignore[method-assign]
+
     async def feed(lane: str) -> None:
+        # With D6 the way a capture connection works: frames are admitted on
+        # arrival and a worker does the recognizing, so a slow decode does not
+        # hold the detector back. Older cores are fed in line, as they were.
+        pending: asyncio.Queue = asyncio.Queue()
+
+        async def work() -> None:
+            while (item := await pending.get()) is not None:
+                await core.perform(lane, item)
+
+        worker = asyncio.create_task(work()) if queued else None
         for index in range(frames):
             wait = origin + index * FRAME_MS / 1000 - time.monotonic()
             if wait > 0:
@@ -206,9 +255,17 @@ async def replay(
             # slow recognizer delays the next call, and an arrival stamp would
             # fold that delay into the segment's time and hide the very lag
             # this tool exists to measure.
-            await core.route_audio(  # type: ignore[arg-type]
-                lane, chunk, index * FRAME_MS * 1000
-            )
+            if queued:
+                for item in await core.admit(lane, chunk, index * FRAME_MS * 1000):
+                    pending.put_nowait(item)
+            else:
+                current_ts[lane] = index * FRAME_MS * 1000
+                await core.route_audio(  # type: ignore[arg-type]
+                    lane, chunk, index * FRAME_MS * 1000
+                )
+        if worker is not None:
+            pending.put_nowait(None)
+            await worker
 
     await asyncio.gather(feed("mic"), feed("far"))
     for lane in ("mic", "far"):
@@ -232,6 +289,9 @@ def report(result: Replay, script: dict | None) -> dict:
     }
     if result.hints is not None:
         summary["hints"] = result.hints.summary()
+        ends = sorted(result.end_to_start_s)
+        summary["end_to_hint_start_s"] = ends
+        summary["end_to_hint_start_median_s"] = ends[len(ends) // 2] if ends else None
     if script:
         for lane in ("far", "mic"):
             scored = score(script[lane], result.text(lane))
