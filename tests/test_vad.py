@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -532,3 +533,64 @@ class TestVoiceGatesRecognition:
         # Arrival-stamped on the session timeline: never closer than one frame.
         assert all(b - a >= 20_000 for a, b in zip(stamps, stamps[1:], strict=False))
         assert stamps[0] == 0
+
+
+class TestDetectionDoesNotWaitForRecognition:
+    """AUDIT D6: voice activity and the bleed gate run where frames arrive.
+
+    They used to run in the same queue as recognition, so while a decode was
+    in progress the detector saw no new frames and the end of a turn was
+    noticed late.
+    """
+
+    async def test_the_end_of_a_turn_is_seen_while_a_decode_is_still_running(
+        self, url: str, core: Core
+    ) -> None:
+        release = threading.Event()
+
+        class Stuck(RecordingRecognizer):
+            def feed(self, lane, timestamp_us, pcm):
+                release.wait(timeout=10)  # a decode that takes "forever"
+                return super().feed(lane, timestamp_us, pcm)
+
+        core.recognizer = Stuck()
+        admitted: list[str] = []
+        original = core.admit
+
+        async def spy(lane, pcm, timestamp_us):
+            work = await original(lane, pcm, timestamp_us)
+            admitted.extend(item.kind for item in work)
+            return work
+
+        core.admit = spy  # type: ignore[method-assign]
+        console = await open_console(url)
+        capture = await websockets.connect(f"{url}/capture?token={TOKEN}")
+        await capture.send(p.Hello(session_id="s", lane="far", client="t/0.1").to_json())
+        await capture.recv()
+        encoder = OpusEncoder()
+        try:
+            sent = await send_audio(capture, tone(600), encoder)
+            await send_audio(capture, quiet(1200), encoder, sent)
+            # The first decode has not returned, and the turn's end is known.
+            await until(lambda: "end" in admitted)
+            assert not release.is_set()
+        finally:
+            release.set()
+            await capture.close()
+            await console.close()
+
+    async def test_route_audio_still_closes_the_turn_in_line(self) -> None:
+        recognizer = RecordingRecognizer()
+        plain = Core(
+            profiles=ProfileStore(FIXTURES),
+            recognizer=recognizer,
+            generator=CannedHintGenerator(),
+            token=TOKEN,
+            detectors=build_detectors({"backend": "energy"}),
+        )
+        for _ in range(30):
+            await plain.route_audio("mic", tone(20))
+        for _ in range(60):
+            await plain.route_audio("mic", quiet(20))
+        assert recognizer.fed
+        assert recognizer.flushed == ["mic"]
