@@ -92,3 +92,16 @@ def test_gaps_in_the_sampler_are_reported_as_freezes(tmp_path: Path) -> None:
     text = report(tmp_path)
     assert "2 freezes" in text
     assert "about 28 s" in text  # (24-10) + (24-10)
+
+
+def test_lag_from_early_rounds_can_be_excluded(tmp_path: Path) -> None:
+    # Rounds 1-2 of the first night were taken with a replay that hid its lag.
+    for round_no, lag in ((1, -6.0), (2, -4.0), (3, 2.0), (4, 3.0)):
+        write(tmp_path, round_no, "replay", 0,
+              {"summary": {"final_lag_max_s": lag, "wer_far": 0.1}})
+    rows = load(tmp_path)
+    everything = collect(rows)["metrics"]["replay"]
+    assert everything["final_lag_max_s"] == [-6.0, -4.0, 2.0, 3.0]
+    trusted = collect(rows, lag_from_round=3)["metrics"]["replay"]
+    assert trusted["final_lag_max_s"] == [2.0, 3.0]
+    assert trusted["wer_far"] == [0.1, 0.1, 0.1, 0.1]  # only lag is excluded

@@ -66,7 +66,7 @@ def spread(values: list[float]) -> str:
             f"[{min(values):.3g} - {max(values):.3g}] n={len(values)}")
 
 
-def collect(rows: list[dict]) -> dict:
+def collect(rows: list[dict], lag_from_round: int = 1) -> dict:
     """Group the finished steps' numbers by step label and metric."""
     metrics: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     failures: list[dict] = []
@@ -87,6 +87,8 @@ def collect(rows: list[dict]) -> dict:
         elif step == "replay" or step.startswith("contention"):
             summary = data.get("summary", {})
             for key in ("final_lag_mean_s", "final_lag_max_s", "wer_far", "wer_mic"):
+                if key.startswith("final_lag") and row["round"] < lag_from_round:
+                    continue
                 if isinstance(summary.get(key), (int, float)):
                     metrics[step][key].append(summary[key])
             hints = summary.get("hints")
@@ -140,9 +142,9 @@ def mac_summary(path: Path) -> list[str]:
     return out
 
 
-def report(out: Path) -> str:
+def report(out: Path, lag_from_round: int = 1) -> str:
     rows = load(out)
-    data = collect(rows)
+    data = collect(rows, lag_from_round)
     rounds = sorted({row["round"] for row in rows})
     lines = [f"# Overnight run: {out.name}", "",
              f"{len(rounds)} rounds, {len(rows)} steps, {len(data['failures'])} failed.", ""]
@@ -170,11 +172,17 @@ def report(out: Path) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = sys.argv[1:] if argv is None else argv
+    args = list(sys.argv[1:] if argv is None else argv)
+    lag_from = 1
+    if "--lag-from-round" in args:
+        index = args.index("--lag-from-round")
+        lag_from = int(args[index + 1])
+        del args[index : index + 2]
     if len(args) != 1:
-        print(__doc__.split("\n\n")[0], file=sys.stderr)
+        print(__doc__.split("\n\n")[0] + "\n[--lag-from-round N ignores replay lag "
+              "before round N]", file=sys.stderr)
         return 2
-    print(report(Path(args[0])))
+    print(report(Path(args[0]), lag_from))
     return 0
 
 
