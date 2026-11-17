@@ -1,6 +1,6 @@
 # The faster speech model lost, and the reason wasn't speed
 
-*Draft for LinkedIn. Not posted — review before publishing. Numbers are from one recorded call and one Mac mini.*
+*Draft for LinkedIn. Not posted — review before publishing. Numbers are from one recorded call and one Mac mini. Updated with a note on the stalls; see the next article.*
 
 ---
 
@@ -39,6 +39,11 @@ equivalent to a normal pass was so slow it never finished 150 seconds of audio i
 I also saw a few requests take 14 to 26 seconds with no pattern I could find. I ruled out one
 explanation (recompiling for a new window length) and did not find the cause. A faster median
 with unexplained stalls is not a win in a live conversation.
+
+*Update, a day later: I found what was freezing that machine. It was asleep for about 13 seconds
+every minute (the next article). I did not rerun Parakeet, so I can't say those 14 to 26 second stalls
+were the same thing, though I now suspect it. The conclusion does not depend on it: the vocabulary
+prompt and the broken streaming were measured on their own.*
 
 I closed the experiment and deleted what I'd installed. The cost was an evening and a download.
 Without the replay, the cost would have been finding this out mid-call.
