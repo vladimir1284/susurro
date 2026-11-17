@@ -26,6 +26,8 @@ Varía las voces cuando puedas: una persona distinta al otro lado en al menos do
 Una llamada sin guion es dos personas hablando de algo que conocen, interrumpiéndose de vez
 en cuando: eso es lo que el detector nunca ha probado.
 
+Lo que se lee en voz alta en cada llamada, listo para leer, está en [Guiones de grabación](recording-scripts.es.md).
+
 ## Cómo grabar
 
 Cada carril se graba por separado, desde las mismas fuentes que usa el cliente de captura

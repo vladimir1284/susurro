@@ -1,0 +1,25 @@
+{
+  "note": "Script read on a call, in Spanish, with two interruptions on purpose (exchange 3 at normal voice, exchange 4 at low voice). far = the interviewer, mic = the candidate (profile es-business-industrial). Sentences are scored independently; an interrupted sentence will score low on the far lane, which is the point.",
+  "far": [
+    "Buenas. Cuéntame: cómo monitorizarías el consumo eléctrico de una planta de tres naves sin parar la producción",
+    "Y si el cuadro está lejos del router",
+    "Mira, mi preocupación es que otro proveedor ya nos instaló algo, que se cayó a las dos semanas, y ahora nadie en la empresa confía en que esto vaya a durar de verdad",
+    "Vale, eso me tranquiliza",
+    "Y cuánto tardarías en tener una primera fase funcionando, más o menos, y qué costaría",
+    "Qué pasa si se cae el enlace con la nube"
+  ],
+  "mic": [
+    "Instalaría medidores con salida Modbus TCP en cada cuadro, leyendo en solo lectura, y guardaría todo en TimescaleDB",
+    "Cable Ethernet hasta un switch industrial. El Wi-Fi no lo recomiendo en una planta con tanto ruido",
+    "Perdona que te interrumpa: eso se evita con fases reversibles, la primera solo observa",
+    "Unas cuatro semanas, sin comprometer el presupuesto todavía",
+    "Los datos se guardan localmente en el PLC y se sincronizan cuando vuelve"
+  ],
+  "terms": [
+    "Modbus TCP",
+    "TimescaleDB",
+    "Ethernet",
+    "PLC",
+    "fases reversibles"
+  ]
+}

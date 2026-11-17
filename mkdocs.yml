@@ -83,6 +83,7 @@ plugins:
             Documentation: Documentación
             M0 runbook: Runbook de M0
             Recording protocol: Protocolo de grabación
+            Recording scripts: Guiones de grabación
 
 nav:
   - Susurro: index.md
@@ -98,6 +99,7 @@ nav:
       - Setup: development/setup.md
       - M0 runbook: development/m0-runbook.md
       - Recording protocol: development/recording-protocol.md
+      - Recording scripts: development/recording-scripts.md
       - Documentation: development/docs.md
 
 extra:

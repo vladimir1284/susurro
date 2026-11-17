@@ -1,0 +1,39 @@
+{
+  "note": "Script read on a call, in English. far = the team lead, mic = the candidate (profile en-technical-backend). Sentences are scored independently, so extra speech between them is free. Read them in order, far then mic.",
+  "far": [
+    "Thanks for joining. I wrote the original billing service, so I will be asking about it. Tell me about a system you replaced without a big bang rewrite",
+    "How did you decide the new engine was safe to switch to",
+    "What did you do when the two engines disagreed",
+    "Our billing tables are write heavy. What happens to a Postgres query under that kind of load",
+    "How would you find out that autovacuum is falling behind",
+    "Let's say we want to move an endpoint to a new service. How do you do that without downtime",
+    "What if a client retries a payment request during the cutover",
+    "We have two junior engineers joining the team. How do you mentor them",
+    "What do you do when a junior engineer's pull request is wrong in a way that matters",
+    "Do you have any questions for me"
+  ],
+  "mic": [
+    "At Arbor Systems we replaced a fourteen year old pricing engine. We did not rewrite it in one go. We ran both engines in parallel against live traffic for six weeks",
+    "We compared the outputs every night and defined an error budget up front. We switched when the residual difference held under 0.05 percent",
+    "Every disagreement became a ticket with the input that caused it. Most were rounding rules nobody had written down, and we added tests for each one before changing anything",
+    "Writers and readers contend for the same pages, so latency grows with lock waits and with dead tuples that vacuum has not cleaned yet. Indexes make writes slower too, so I would check which ones are really used",
+    "I would watch dead tuples per table and the age of the oldest transaction, and compare vacuum duration to the rate of updates. A long running transaction blocks cleanup for everyone",
+    "Put the new service behind a feature flag, send a small share of traffic, and keep the old path as the fallback. Roll forward only while the error rate stays inside the budget",
+    "The payment request needs an idempotency key, stored with the result, so a retry returns the first answer instead of charging twice. That has to exist before the cutover starts, not after",
+    "I pair with them on the first few changes and explain why, not only what. Then I review their work for the reasoning, and I let them make small mistakes in a safe place",
+    "I say what the risk is, with a concrete failing case, and ask them how they would fix it. If they find it themselves they keep it",
+    "Yes. What does on-call actually look like for the platform team, and how often does a person get paged"
+  ],
+  "terms": [
+    "Postgres",
+    "autovacuum",
+    "dead tuples",
+    "idempotency key",
+    "feature flag",
+    "error budget",
+    "cutover",
+    "on-call",
+    "mentor",
+    "fourteen year old"
+  ]
+}
