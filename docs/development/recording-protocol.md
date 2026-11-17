@@ -26,6 +26,8 @@ Vary the voices when you can: a different person on the far side in at least two
 unscripted call is two people talking about something they know, interrupting each other
 now and then: that is what the detector has never been tested on.
 
+What to read aloud for each call, ready to read, is in [Recording scripts](recording-scripts.md).
+
 ## How to record
 
 Each lane is recorded on its own, from the same sources the capture client uses
