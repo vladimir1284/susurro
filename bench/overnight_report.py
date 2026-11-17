@@ -113,13 +113,14 @@ def collect(rows: list[dict]) -> dict:
 def mac_summary(path: Path) -> list[str]:
     if not path.exists():
         return ["No `mac_state.csv` (the sampler log was not fetched)."]
-    loads, tops = [], Counter()
+    loads, tops, stamps = [], Counter(), []
     with path.open(encoding="utf-8") as handle:
         for row in csv.reader(handle):
             if not row or row[0] == "ts":
                 continue
             try:
                 loads.append(float(row[1]))
+                stamps.append(int(row[0]))
             except (ValueError, IndexError):
                 continue
             for cell in row[4:7]:
@@ -128,9 +129,13 @@ def mac_summary(path: Path) -> list[str]:
                     tops[name] += 1
     if not loads:
         return ["`mac_state.csv` has no samples."]
+    # The sampler sleeps 10 s between rows. A longer gap is time the Mac did not
+    # run it: on the first night it was a freeze of about 13 s once a minute.
+    holes = [b - a - 10 for a, b in zip(stamps, stamps[1:], strict=False) if b - a > 14]
     out = [f"{len(loads)} samples, 10 s apart. Load average: median "
            f"{statistics.median(loads):.2f}, max {max(loads):.2f}.",
-           "", "Most often among the three busiest processes:", ""]
+           "", f"{len(holes)} freezes (a sampler gap over 14 s), about {sum(holes)} s "
+           f"in all.", "", "Most often among the three busiest processes:", ""]
     out += [f"- {name}: {count} samples" for name, count in tops.most_common(6)]
     return out
 

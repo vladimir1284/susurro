@@ -81,3 +81,14 @@ def test_the_mac_state_log_is_summarized(tmp_path: Path) -> None:
     text = report(tmp_path)
     assert "2 samples" in text
     assert "mediaanalysisd: 2 samples" in text
+
+
+def test_gaps_in_the_sampler_are_reported_as_freezes(tmp_path: Path) -> None:
+    # The sampler writes every 10 s; a 24 s hole means the Mac did not run it.
+    stamps = [100, 110, 134, 144, 154, 178]
+    lines = ["ts,load1,free_pages,swap,top1,top2,top3"] + [
+        f"{t},1.0,100,0.00M,x:1.0,y:1.0,z:1.0" for t in stamps]
+    (tmp_path / "mac_state.csv").write_text("\n".join(lines) + "\n")
+    text = report(tmp_path)
+    assert "2 freezes" in text
+    assert "about 28 s" in text  # (24-10) + (24-10)
