@@ -1196,6 +1196,24 @@ class TestWhenTheBackendsMisbehave:
         assert "first token" in error["detail"]
         await console.close()
 
+    async def test_a_model_that_returns_no_content_is_an_error_not_a_hint(
+        self, url: str, core: Core
+    ) -> None:
+        # A reasoning model with thinking on streams nothing into `content`.
+        # That used to end as "complete" with empty text and no ttft.
+        core.generator.hints = {"conversational": ()}
+        console = await open_console(url)
+        await go_live(console, "en-technical-backend", "en", "conversational")
+        await console.send(
+            json.dumps({"type": "hint.request", "mode": "conversational"})
+        )
+        end = await drain(console, "hint.end")
+        assert end["reason"] == "error"
+        error = await drain(console, "error")
+        assert error["code"] == "hint_failed"
+        assert "without any content" in error["detail"]
+        await console.close()
+
     async def test_a_model_that_stops_mid_sentence_ends_the_hint(
         self, url: str, core: Core
     ) -> None:

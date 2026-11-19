@@ -936,6 +936,15 @@ class Core:
                 tokens += 1
                 self._hint_text[hint_id] = self._hint_text.get(hint_id, "") + chunk
                 await self.broadcast(p.hint_delta(hint_id, chunk))
+            # A stream that ends cleanly with nothing in it is not a hint. A
+            # reasoning model started with thinking on puts every token in
+            # reasoning_content and leaves content empty: the 2026-11-18 replay
+            # got 108 "complete" hints of zero text and no ttft, silently.
+            if not self._hint_text.get(hint_id, "").strip():
+                raise ValueError(
+                    "the model finished without any content (a reasoning model "
+                    "with thinking on keeps its output out of `content`)"
+                )
         except asyncio.CancelledError:
             # The cancelling side sends hint.end; sending it here too would
             # race and emit the event twice.
